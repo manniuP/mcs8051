@@ -39,10 +39,26 @@
 # Zig 后端生成的汇编（.zig 是源，.asm 是产物）
 /examples/ai8051u_blink/*.asm
 /projects/ai8051u_blink/*.asm
+/projects/ai8051u_ptrtest/*.asm
+
+# ptrtest 调试/构建产物（仅 ptrtest.zig 与 main.c 是源）
+/projects/ai8051u_ptrtest/*.txt
+/projects/ai8051u_ptrtest/*.log
+/projects/ai8051u_ptrtest/*.ihex
+/projects/ai8051u_ptrtest/ptrtest
+/projects/ai8051u_ptrtest/noptr
+/projects/ai8051u_ptrtest/noptr.zig
+/projects/ai8051u_ptrtest/simple
+/projects/ai8051u_ptrtest/simple.zig
+/projects/ai8051u_ptrtest/simplest
+/projects/ai8051u_ptrtest/simplest.zig
+/projects/ai8051u_ptrtest/empty.zig
+/projects/ai8051u_ptrtest/min.ihex
+/projects/ai8051u_ptrtest/min.zig
 
 # Zig / xmake 构建缓存
 .zig-cache/
-*.zig-cache/
+*.zig-cache*/
 .xmake/
 
 # Editors / OS

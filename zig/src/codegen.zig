@@ -1051,6 +1051,7 @@ pub fn lowerValue(pt: Zcu.PerThread, val: Value, target: *const std.Target) Allo
                             return .{ .lea_nav = nav_index };
                         } else {
                             // Create the 0xaa bit pattern...
+                            std.debug.print("lowerValue undef_ptr: ptr_bits={d} shift={d}\n", .{ target.ptrBitWidth(), target.ptrBitWidth() + 1 });
                             const undef_ptr_bits: u64 = @intCast((@as(u66, 1) << @intCast(target.ptrBitWidth() + 1)) / 3);
                             // ...but align the pointer
                             const alignment = zcu.navAlignment(nav_index);
