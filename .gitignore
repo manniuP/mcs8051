@@ -3,6 +3,8 @@
 /build/
 /zig.master-1415.bak
 /tools/wsl_build_sdcc.sh
+# 唯一可用的 55MB 自举 zig 编译器（二进制，不入库；自动备份自 .zig-cache）
+/tools/zig-bootstrap/
 
 # Zig 源码已纳入版本管理，排除构建产物与缓存
 /zig/zig-out/

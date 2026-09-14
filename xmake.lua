@@ -32,7 +32,7 @@ option("sdcc")
     set_description("SDCC 主驱动器路径（mcs51 模式用）")
 
 option("zig")
-    set_default(os.getenv("ZIG") or path.join(os.projectdir(), "zig/zig-out/bin/zig.exe"))
+    set_default(os.getenv("ZIG") or path.join(os.projectdir(), "tools/zig-bootstrap/zig.exe"))
     set_showmenu(true)
     set_description("自举 zig 编译器路径")
 
@@ -129,6 +129,80 @@ target("blink")
         local ihx = target:get("targetfile")
         if not ihx or not os.isfile(ihx) then
             raise("还没构建，先 xmake build blink")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- ptrtest：M3 里程碑的 C + Zig 混编验证（3 字节指针互操作）。
+-- 只走“zig 编译 zig 源 -> sdas251 -> sdcc 编译 C -> sdcc 链接”的直连管线，
+-- 不使用自举编译器。
+-- 用法：xmake build --mcs-arch=mcs251 ptrtest
+target("ptrtest")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("ptrtest 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "projects/ai8051u_ptrtest")
+        local incdir = path.join(projdir, "include")
+
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool .. "（用 --sdcc251 / --zig 覆盖路径）")
+            end
+        end
+
+        local main_c   = path.join(scriptdir, "main.c")
+        local zig_src  = path.join(scriptdir, "ptrtest.zig")
+        local main_rel = path.join(scriptdir, "main.rel")
+        local zig_asm  = path.join(scriptdir, "ptrtest.asm")
+        local zig_rel  = path.join(scriptdir, "ptrtest.rel")
+        local ihx      = path.join(scriptdir, "ptrtest.ihx")
+
+        -- [1/4] C -> .rel
+        print("[1/4] C -> rel   : main.c")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "-I", incdir, "-c", main_c, "-o", main_rel})
+
+        -- [2/4] Zig -> .asm（ZIG_LIB_DIR 指向带 mcs251 目标定义的 zig/lib）
+        print("[2/4] Zig -> asm : ptrtest.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "zig/lib"))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. zig_asm, zig_src})
+
+        -- [3/4] .asm -> .rel
+        print("[3/4] asm -> rel : ptrtest.asm")
+        os.vrunv(sdas, {"-plosgffw", zig_rel, zig_asm})
+
+        -- [4/4] link -> .ihx（sdcc 自动补启动与运行库）
+        print("[4/4] link -> ihx: ptrtest.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", main_rel, zig_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "projects/ai8051u_ptrtest")
+        for _, name in ipairs({"main.rel", "main.asm", "main.lst", "main.rst", "main.sym",
+                              "ptrtest.asm", "ptrtest.rel", "ptrtest.ihx", "ptrtest.lk",
+                              "ptrtest.lst", "ptrtest.map", "ptrtest.mem", "ptrtest.rst", "ptrtest.sym"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 ptrtest")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
