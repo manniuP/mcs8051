@@ -7,6 +7,10 @@
 # Zig 源码已纳入版本管理，排除构建产物与缓存
 /zig/zig-out/
 /zig/.zig-cache*/
+# 上游 0.16.1 之外的本地杂物（生成物/会话笔记/误入的目标文件）
+/zig/build_options.zig
+/zig/session-ses_f65c.md
+/zig/test.obj
 
 # SDCC 上游 fork 源码与预编译产物（独立管理）
 /sdcc-c251/

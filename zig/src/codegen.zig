@@ -37,6 +37,7 @@ fn devFeatureForBackend(backend: std.builtin.CompilerBackend) dev.Feature {
         .stage2_c => .c_backend,
         .stage2_llvm => .llvm_backend,
         .stage2_powerpc => unreachable,
+        .stage2_mcs => .mcs_backend,
         .stage2_riscv64 => .riscv64_backend,
         .stage2_sparc64 => .sparc64_backend,
         .stage2_spirv => .spirv_backend,
@@ -55,6 +56,7 @@ fn importBackend(comptime backend: std.builtin.CompilerBackend) type {
         .stage2_c => @import("codegen/c.zig"),
         .stage2_llvm => @import("codegen/llvm.zig"),
         .stage2_powerpc => unreachable,
+        .stage2_mcs => @import("codegen/mcs/CodeGen.zig"),
         .stage2_riscv64 => @import("codegen/riscv64/CodeGen.zig"),
         .stage2_sparc64 => @import("codegen/sparc64/CodeGen.zig"),
         .stage2_spirv => @import("codegen/spirv/CodeGen.zig"),
@@ -75,6 +77,7 @@ pub fn legalizeFeatures(pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) ?*co
         .stage2_x86_64,
         .stage2_aarch64,
         .stage2_x86,
+        .stage2_mcs,
         .stage2_riscv64,
         .stage2_sparc64,
         .stage2_spirv,
@@ -104,6 +107,7 @@ pub const AnyMir = union {
     x86_64: if (dev.env.supports(.x86_64_backend)) @import("codegen/x86_64/Mir.zig") else noreturn,
     wasm: if (dev.env.supports(.wasm_backend)) @import("codegen/wasm/Mir.zig") else noreturn,
     c: if (dev.env.supports(.c_backend)) @import("codegen/c.zig").Mir else noreturn,
+    mcs: if (dev.env.supports(.mcs_backend)) @import("codegen/mcs/Mir.zig") else noreturn,
 
     pub inline fn tag(comptime backend: std.builtin.CompilerBackend) []const u8 {
         return switch (backend) {
@@ -113,6 +117,7 @@ pub const AnyMir = union {
             .stage2_x86_64 => "x86_64",
             .stage2_wasm => "wasm",
             .stage2_c => "c",
+            .stage2_mcs => "mcs",
             else => unreachable,
         };
     }
@@ -128,6 +133,7 @@ pub const AnyMir = union {
             .stage2_x86_64,
             .stage2_wasm,
             .stage2_c,
+            .stage2_mcs,
             => |backend_ct| @field(mir, tag(backend_ct)).deinit(gpa),
         }
     }
@@ -157,6 +163,7 @@ pub fn generateFunction(
         .stage2_x86_64,
         .stage2_wasm,
         .stage2_c,
+        .stage2_mcs,
         => |backend| {
             dev.check(devFeatureForBackend(backend));
             const CodeGen = importBackend(backend);
@@ -192,6 +199,7 @@ pub fn emitFunction(
         .stage2_riscv64,
         .stage2_sparc64,
         .stage2_x86_64,
+        .stage2_mcs,
         => |backend| {
             dev.check(devFeatureForBackend(backend));
             const mir = &@field(any_mir, AnyMir.tag(backend));
@@ -216,7 +224,7 @@ pub fn generateLazyFunction(
         zcu.getTarget();
     switch (target_util.zigBackend(target, zcu.comp.config.use_llvm)) {
         else => unreachable,
-        inline .stage2_riscv64, .stage2_x86_64 => |backend| {
+        inline .stage2_riscv64, .stage2_x86_64, .stage2_mcs => |backend| {
             dev.check(devFeatureForBackend(backend));
             return importBackend(backend).generateLazy(lf, pt, src_loc, lazy_sym, atom_index, w, debug_output);
         },
