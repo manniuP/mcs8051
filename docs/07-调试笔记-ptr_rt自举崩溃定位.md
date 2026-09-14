@@ -66,21 +66,95 @@
 
 - 该 ihx 的 fill/sum 无间接寻址，真机会卡死在 test_fail=2，仅验证工具链。
 
-## 下一步：二分 22 文件 diff
+## 后续排查（2026-09-14 20:30 续）
 
-崩溃与"15:04 工作区（55MB 正常）→ 16:47 CodeGen.zig 修复"的时间线吻合，
-但 mcs 后端代码在 x86 编译路径不执行，机制存疑。备选嫌疑（全局路径）：
-Type.zig（ptrAbiAlignment 的 isPowerOfTwo 泛化）、Sema.zig（调用约定）、
-Zcu.zig、codegen.zig 后端分发、link.zig File union（Asx case）。
+### 崩溃症状从栈溢出变为 @intCast panic
 
-计划：
-1. `git checkout aa2ae08d -- zig/` 构建纯净 0.16.1（新缓存 .zig-cache-r2）：
-   - 纯净版正常 → 崩溃在 MCS diff 内，按文件二分
-   - 纯净版也崩 → 构建环境/bootstrap 问题，另查
-2. 用 `git stash`/checkout 在 1bd19835 与 aa2ae08d 间切换，二分 22 文件
-   （优先 Type.zig / Sema.zig / Zcu.zig / codegen.zig / link.zig）
-3. 找到后修复 → 构建带 .ptr_rt 的 zig.exe → 跑 ptrtest 全流程验证
-   fill 生成 `mov @DR28` 间接写 → commit
+- 清理了 26 个残留自举构建任务后，重新从干净源码（提交 1bd1983519）
+  用 58MB 版作宿主 Debug 重建（.zig-cache-r3），产物在
+  `.zig-cache-r3\o\6057b47872bb8a5896ecca90a8444668\zig.exe`（1.1GB）
+- **新编译器在 empty.zig（空文件）上也崩**：
+  `thread panic: integer does not fit in destination type`（exit 3）
+- 之前 ReleaseFast 构建产物（993MB，3 个版本：16:17/16:52/17:08）
+  则报 `0xC0000094`（STATUS_INTEGER_DIVIDE_BY_ZERO）
+- 崩溃码不同但根源相同：源码在 MCS 修改后基础编译路径有 bug
+
+### 唯一可用编译器
+
+| 产物 | 大小 | 构建时间 | 源码状态 | 可用 |
+|------|------|----------|----------|------|
+| `.zig-cache\o\910e64d8...\zig.exe` | 58MB | 15:04 | 杂乱工作树（pre-git） | **是** |
+| `zig-out\bin\zig.exe` | 993MB | 19:36 | 提交 1bd1983519 | 否（div-zero） |
+| `zig-out\bin\zig2.exe` | 1.1GB | 15:31 | 工作树（pre-commit） | 否（@intCast） |
+| `zig-out\bin\zig3.exe` | 1.1GB | 15:52 | 工作树（pre-commit） | 否（@intCast） |
+| `.zig-cache-r3\o\6057b...\zig.exe` | 1.1GB | 20:25 | 提交 1bd1983519 | 否（@intCast） |
+
+### 嫌疑代码（已排除）
+
+- `src/link/Asx.zig`：通读，干净
+- `lib/std/Target/mcs51.zig` / `mcs251.zig`：目标定义，干净
+- `src/codegen/mcs/abi.zig`：ABI 分类，干净
+- `src/codegen/mcs/CodeGen.zig`：无除法运算
+- 共享代码 diff（Type.zig, Sema.zig, Zcu.zig, target.zig, dev.zig, link.zig,
+  codegen.zig, llvm.zig, spirv/Module.zig, builtin.zig, Target.zig）：
+  逐行审查未见明显 bug
+
+### 结论
+
+干净重放（1bd1983519）可能丢失了杂乱工作树中的某个修复。58MB 版是唯一
+能工作的编译器，但不含 `.ptr_rt` 修复。无 pdb 无法符号化栈回溯。
+
+## 用户决定：放弃自举，走 SDCC + 58MB zig.exe 直连管线
+
+> "不搞把zig安装到系统，不要搞自举的路了，直接搞C语言用sdcc编译，
+> zig语言用zig编译最后连接到一起的路，不要再试其他路了"
+
+下一步：用 58MB zig.exe 编译 ptrtest.zig → sdas251 汇编 → sdcc 编译 main.c →
+链接出 ihx。即使 58MB 版生成的汇编有帧内寻址 bug（fill 写自己栈帧而非
+经指针写 buffer），也先跑通完整管线，记录结果。
+
+## ptrtest v7 全流程跑通（2026-09-14 20:50）
+
+### 管线验证结果
+
+| 步骤 | 命令 | 结果 |
+|------|------|------|
+| Zig→asm | 58MB zig.exe build-obj -target mcs251-freestanding | ✅ exit 0 |
+| asm→rel | sdas251 -plosgffw ptrtest_v7.rel ptrtest_v7.asm | ✅ exit 0 |
+| C→rel | sdcc --model-large -I include -c main.c -o main_v7.rel | ✅ exit 0（仅 warning） |
+| link→ihx | sdcc --model-large main_v7.rel ptrtest_v7.rel -o ptrtest_v7.ihx | ✅ exit 0 |
+
+产物：`ptrtest_v7.ihx`（2358 字节）
+
+### 汇编分析（ptrtest_v7.asm）
+
+**`_fill` 函数**（L136-203）：
+- 参数指针（DPL/DPH/B）被复制到帧槽 `@spx-0x3..0x5`
+- `buf[0]='h'` 生成为 `mov a,#0x68; mov @spx-0x8,a` — 写入**栈帧**而非 buffer
+- `buf[1..4]` 同理，全部 `mov @spx-0xN,a`（帧内拷贝）
+- 返回 `dpl=5` 正确
+
+**`_sum` 函数**（L13-132）：
+- 同样从帧槽读 `@spx-0x3..0x5`，不是经指针间接访问 C 的 buffer
+- 五次 `add a,r7` 累加正确，但加的是帧内副本值，不是 C 写入的 "hello"
+
+### 结论
+
+- **Zig→SDCC 工具链全流程已跑通**（zig build-obj → sdas251 → sdcc -c → sdcc link）
+- 58MB 版无 `.ptr_rt` 修复，`fill`/`sum` 全部帧内寻址，**无 DR28 间接访问**
+- 真机运行会卡在 `test_fail=2`（C 读回 buf 发现内容不对）
+- 要让 ptrtest 真正工作，需修复帧内寻址 bug（`.ptr_rt` 修复仅存在于
+  源码 [CodeGen.zig L643-L652](../zig/src/codegen/mcs/CodeGen.zig#L643-L652)，
+  但无法通过自举编译器验证）
+
+### 可用编译器对照表
+
+| 产物 | 大小 | 构建时间 | 源码状态 | 可用 | 含 .ptr_rt |
+|------|------|----------|----------|------|------------|
+| `.zig-cache\o\910e64d8...\zig.exe` | 58MB | 15:04 | 杂乱工作树 | **是** | 否 |
+| `zig-out\bin\zig.exe` | 993MB | 19:36 | 1bd1983519 | 否（div-zero） | 是（源码） |
+| `zig-out\bin\zig3.exe` | 1.1GB | 15:52 | 工作树 | 否（@intCast） | 未知 |
+| `.zig-cache-r3\o\6057b...\zig.exe` | 1.1GB | 20:25 | 1bd1983519 | 否（@intCast） | 是（源码） |
 
 ## 其他备注
 
