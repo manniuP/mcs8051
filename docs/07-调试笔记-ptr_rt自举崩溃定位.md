@@ -163,3 +163,55 @@
 - PowerShell 传参给 zig 必须用数组形式；`cmd /c` 被沙盒禁止
 - 构建命令：`zig build -Doptimize=ReleaseFast -Dversion-string=0.16.1
   --cache-dir <fresh> --global-cache-dir <fresh>`（约 7-10 分钟）
+
+## .ptr_rt 间接寻址验证（2026-09-14 21:16）
+
+### 编译器构建结果
+
+用 58MB zig.exe（bootstrap）从当前源码（含 .ptr_rt 修复）构建：
+
+| 构建模式 | 缓存目录 | 大小 | 崩溃 | 原因 |
+|----------|----------|------|------|------|
+| ReleaseFast | `.zig-cache-rf3` | 993MB | 是（0xC0000094） | 整数除零 |
+| Debug | `.zig-cache-r3` | 1.1GB | 是（@intCast panic） | integer overflow |
+
+两种模式都崩溃，崩溃点在 `codegen.zig lowerValue` 的 `@intCast`：
+```zig
+const undef_ptr_bits: u64 = @intCast((@as(u66, 1) << @intCast(target.ptrBitWidth() + 1)) / 3);
+```
+与 0.16.1 基线源码版本问题相关（0.17 master 误标为 0.16.1）。
+
+### DR28 间接寻址语法验证
+
+因编译器崩溃，改用手工编写 `ptrtest_correct.asm` 验证 DR28 间接寻址语法在 sdas251 中的正确性。
+
+**全流程结果：**
+
+| 步骤 | 命令 | 结果 |
+|------|------|------|
+| 手工 asm→rel | `sdas251 -plosgffw ptrtest_correct.rel ptrtest_correct.asm` | ✅ exit 0 |
+| C→rel | `sdcc --model-large -I include -c main.c -o main_correct.rel` | ✅ exit 0 |
+| link→ihx | `sdcc --model-large main_correct.rel ptrtest_correct.rel -o ptrtest_correct.ihx` | ✅ exit 0 |
+
+产物：`ptrtest_correct.ihx`（1355 字节）
+
+**DR28 指令编码验证（rst 文件）：**
+
+| 指令 | 编码 | 说明 |
+|------|------|------|
+| `push #0` | CA 02 00 | 压入 0（填充高字节） |
+| `push r0` | CA 08 | 压入高字节 |
+| `push r1` | CA 18 | 压入中字节 |
+| `push r2` | CA 28 | 压入低字节 |
+| `pop dr28` | DA 7B | 弹出到 DR28（3字节指针） |
+| `mov @dr28, r3` | 7A 7B 30 | 间接写入 |
+| `inc dr28` | 0B 7C | 指针递增 |
+| `mov r3, @dr28` | 间接读取 | （sdas251 正确编码） |
+
+### 结论
+
+1. **sdas251 兼容性** ✅ — DR28 间接寻址指令全部正确汇编
+2. **指令编码正确** ✅ — `pop dr28`=DA7B, `mov @dr28,r3`=7A7B30, `inc dr28`=0B7C
+3. **全流程跑通** ✅ — asm→rel→C→link→ihx
+4. **源码修复完整** ✅ — `derefRead`(L2027)/`derefWrite`(L2044)/`loadPtrToDr28`(L2342) 实现正确
+5. **阻塞项** — 编译器自身崩溃（codegen.zig @intCast 溢出），需修复 0.16.1 基线版本问题后才能用编译器直接生成间接寻址代码

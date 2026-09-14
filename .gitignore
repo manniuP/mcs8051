@@ -40,6 +40,9 @@
 /examples/ai8051u_blink/*.asm
 /projects/ai8051u_blink/*.asm
 /projects/ai8051u_ptrtest/*.asm
+# 例外：手工编写的参考 asm（非构建产物）
+!/projects/ai8051u_ptrtest/ptrtest_correct.asm
+!/projects/ai8051u_ptrtest/test_dr28.asm
 
 # ptrtest 调试/构建产物（仅 ptrtest.zig 与 main.c 是源）
 /projects/ai8051u_ptrtest/*.txt
