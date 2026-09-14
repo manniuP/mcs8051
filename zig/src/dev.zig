@@ -94,7 +94,6 @@ pub const Env = enum {
                 .riscv64_backend,
                 .sparc64_backend,
                 .spirv_backend,
-                .mcs_backend,
                 .lld_linker,
                 .coff_linker,
                 .coff2_linker,
@@ -105,7 +104,6 @@ pub const Env = enum {
                 .wasm_linker,
                 .spirv_linker,
                 .plan9_linker,
-                .asx_linker,
                 => true,
                 .cc_command,
                 .translate_c_command,
@@ -282,7 +280,6 @@ pub const Feature = enum {
     riscv64_backend,
     sparc64_backend,
     spirv_backend,
-    mcs_backend,
 
     lld_linker,
     coff_linker,
@@ -294,7 +291,6 @@ pub const Feature = enum {
     wasm_linker,
     spirv_linker,
     plan9_linker,
-    asx_linker,
 };
 
 /// Makes the code following the call to this function unreachable if `feature` is disabled.
