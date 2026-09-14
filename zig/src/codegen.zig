@@ -774,6 +774,7 @@ fn lowerUavRef(
     const endian = target.cpu.arch.endian();
     switch (ptr_width_bytes) {
         2 => try w.writeInt(u16, @intCast(vaddr), endian),
+        3 => try w.writeInt(u24, @intCast(vaddr), endian),
         4 => try w.writeInt(u32, @intCast(vaddr), endian),
         8 => try w.writeInt(u64, vaddr, endian),
         else => unreachable,
@@ -850,6 +851,7 @@ fn lowerNavRef(
     const endian = target.cpu.arch.endian();
     switch (ptr_width_bytes) {
         2 => try w.writeInt(u16, @intCast(vaddr), endian),
+        3 => try w.writeInt(u24, @intCast(vaddr), endian),
         4 => try w.writeInt(u32, @intCast(vaddr), endian),
         8 => try w.writeInt(u64, vaddr, endian),
         else => unreachable,
@@ -1024,6 +1026,20 @@ const LowerResult = union(enum) {
     lea_uav: InternPool.Key.Ptr.BaseAddr.Uav,
 };
 
+/// Undefined-pointer sentinel: alternating 0xaa bit pattern truncated to the
+/// target's pointer width (16→0xAAAA, 24→0xAAAAAA, 32→0xAAAAAAAA, 64→0xAAAA…).
+///
+/// Width-safe: computing `(1 << (ptr_bits + 1)) / 3` overflows the 6-bit shift
+/// operand when `ptr_bits == 64` (65 does not fit in u6), which used to panic in
+/// safe modes and truncate to a bogus zero in ReleaseFast.
+fn undefPtrBits(target: *const std.Target) u64 {
+    const ptr_bits = target.ptrBitWidth();
+    return if (ptr_bits >= 64)
+        0xAAAAAAAAAAAAAAAA
+    else
+        (@as(u64, 1) << @intCast(ptr_bits + 1)) / 3;
+}
+
 pub fn lowerValue(pt: Zcu.PerThread, val: Value, target: *const std.Target) Allocator.Error!LowerResult {
     const zcu = pt.zcu;
     const ip = &zcu.intern_pool;
@@ -1051,8 +1067,7 @@ pub fn lowerValue(pt: Zcu.PerThread, val: Value, target: *const std.Target) Allo
                             return .{ .lea_nav = nav_index };
                         } else {
                             // Create the 0xaa bit pattern...
-                            std.debug.print("lowerValue undef_ptr: ptr_bits={d} shift={d}\n", .{ target.ptrBitWidth(), target.ptrBitWidth() + 1 });
-                            const undef_ptr_bits: u64 = @intCast((@as(u66, 1) << @intCast(target.ptrBitWidth() + 1)) / 3);
+                            const undef_ptr_bits = undefPtrBits(target);
                             // ...but align the pointer
                             const alignment = zcu.navAlignment(nav_index);
                             return .{ .immediate = alignment.forward(undef_ptr_bits) };
@@ -1063,7 +1078,7 @@ pub fn lowerValue(pt: Zcu.PerThread, val: Value, target: *const std.Target) Allo
                         return .{ .lea_uav = uav };
                     } else {
                         // Create the 0xaa bit pattern...
-                        const undef_ptr_bits: u64 = @intCast((@as(u66, 1) << @intCast(target.ptrBitWidth() + 1)) / 3);
+                        const undef_ptr_bits = undefPtrBits(target);
                         // ...but align the pointer
                         const alignment = Type.fromInterned(uav.orig_ty).ptrAlignment(zcu);
                         return .{ .immediate = alignment.forward(undef_ptr_bits) };
