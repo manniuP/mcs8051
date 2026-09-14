@@ -4,8 +4,9 @@
 /zig.master-1415.bak
 /tools/wsl_build_sdcc.sh
 
-# Zig 上游源码 fork（独立仓库管理，本仓库只引用 zig-out/bin/zig.exe）
-/zig/
+# Zig 源码已纳入版本管理，排除构建产物与缓存
+/zig/zig-out/
+/zig/.zig-cache*/
 
 # SDCC 上游 fork 源码与预编译产物（独立管理）
 /sdcc-c251/
