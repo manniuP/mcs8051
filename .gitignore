@@ -1,0 +1,48 @@
+# Local build outputs
+/out/
+/build/
+/zig.master-1415.bak
+/tools/wsl_build_sdcc.sh
+
+# Zig 上游源码 fork（独立仓库管理，本仓库只引用 zig-out/bin/zig.exe）
+/zig/
+
+# SDCC 上游 fork 源码与预编译产物（独立管理）
+/sdcc-c251/
+/sdcc-mcs251-windows-x64/
+/sdcc-c251-build.log
+
+# STC 官方 SDK / 受版权资料（本机存放，不提交）
+/vendor/
+
+# PowerShell 构建脚本（已迁移到 xmake.lua，脚本本身不提交）
+/driver/build.ps1
+/examples/ai8051u_blink/build.ps1
+/projects/ai8051u_blink/build.ps1
+
+# 构建产物（sdcc/sdas/sdld 输出）
+*.ihx
+*.rel
+*.lk
+*.mem
+*.rst
+*.sym
+*.lst
+*.dumpcustom*
+*.map
+
+# Zig 后端生成的汇编（.zig 是源，.asm 是产物）
+/examples/ai8051u_blink/*.asm
+/projects/ai8051u_blink/*.asm
+
+# Zig / xmake 构建缓存
+.zig-cache/
+*.zig-cache/
+.xmake/
+
+# Editors / OS
+.vs/
+.vscode/
+*.user
+Thumbs.db
+desktop.ini
