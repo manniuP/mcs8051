@@ -1,7 +1,9 @@
 # AI8051U 流水灯 demo（C + Zig）
 
 一个最小的 **C + Zig 混合工程**：C 用 STC 官方 AI8051U HAL C 库驱动 P1，
-Zig 自举后端负责流水灯图案的计算，两者由 SDCC 工具链链接成同一个 Intel HEX。
+Zig MCS 后端负责流水灯图案的计算，两者由 SDCC 工具链链接成同一个 Intel HEX。
+
+> 源码在 `examples/ai8051u_blink/`，本说明文档统一收录在 `docs/`。
 
 ## 效果
 
@@ -32,7 +34,7 @@ cd examples\ai8051u_blink
 
 - 本机 SDCC 4.5.20（含 `sdcc.exe`、`sdas8051.exe`），默认路径
   `C:\Program Files (x86)\SDCC\bin`；
-- 顶部已构建好的 `zig\zig-out\bin\zig.exe`。
+- 预编译的 `tools\zig-bootstrap\zig.exe`（55MB，见 [01-环境准备](01-环境准备.md) 第 3 节）。
 
 产物：`blink.asm`/`led.asm`、`*.rel`、`blink.ihx`、`blink.map`。
 
@@ -47,8 +49,8 @@ cd examples\ai8051u_blink
 本机安装的 SDCC 只带 `sdas8051`，没有支持 MCS-251 的 `sdas251`/`sdld`。
 AI8051U 兼容经典 8051 指令，因此 C 走 `sdcc -mmcs51`，Zig 走
 `-target mcs51-freestanding`。若要真正使用 AI8051U 的 MCS-251 核，需先按
-`driver/README.md` 编译 `sdcc-c251` 得到 `sdas251`/`sdld`，再把 `build.ps1`
-里的目标换成 mcs251。
+[08-驱动与链接详解](08-驱动与链接详解.md) 编译 `sdcc-c251` 得到 `sdas251`/`sdld`，
+再把 `build.ps1` 里的目标换成 mcs251。
 
 ## C / Zig 的接口约定
 

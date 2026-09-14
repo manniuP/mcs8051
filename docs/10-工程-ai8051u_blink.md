@@ -1,8 +1,9 @@
 # AI8051U 流水灯（C + Zig 混合工程）
 
-本工程演示如何用 **C（STC AI8051U HAL 库）+ Zig（自举后端）** 共同构建一个可
-烧录的流水灯固件，是 [docs/](../../docs/README.md) 中「Zig + SDCC 混编」流程的
-完整落地示例。
+本工程演示如何用 **C（STC AI8051U HAL 库）+ Zig（MCS 后端）** 共同构建一个可
+烧录的流水灯固件，是 [docs/](README.md) 中「Zig + SDCC 混编」流程的完整落地示例。
+
+> 源码在 `projects/ai8051u_blink/`，本说明文档统一收录在 `docs/`。
 
 ## 效果
 
@@ -16,18 +17,19 @@ projects/ai8051u_blink/
   main.c        C 主程序：STC HAL 配置 P1、写 P1、调 delay_ms
   led.zig       Zig 逻辑：export fn led_next(u8) u8，返回下一个灯位
   build.ps1     构建脚本：C→rel，Zig→asm→rel，再链接成 ihx
-  README.md     本文件
 ```
+
+（本说明文档在 `docs/10-工程-ai8051u_blink.md`。）
 
 产物（构建后生成）：`blink.ihx`、`blink.map`，以及中间文件 `*.rel/.asm/.lst/...`。
 
 ## 依赖
 
 - 本机 SDCC 4.5.20（`sdcc.exe` / `sdas8051.exe` / `sdld.exe`）；
-- 已构建的 `zig/zig-out/bin/zig.exe`；
+- 预编译的 `tools/zig-bootstrap/zig.exe`（55MB，见 [01-环境准备](01-环境准备.md) 第 3 节）；
 - 头文件 `include/` 与 STC HAL `port/stc-hal/`（脚本自动引用）。
 
-准备步骤见 [docs/01-环境准备.md](../../docs/01-环境准备.md)。
+准备步骤见 [01-环境准备.md](01-环境准备.md)。
 
 ## 构建
 
@@ -89,7 +91,7 @@ export fn led_next(cur: u8) u8 {
 
 接口刻意只用「单字节参数 + 单字节返回」，与 SDCC MCS-51 默认 ABI 完全一致
 （参数在 `DPL`、返回在 `DPL`），Zig 后端生成的 `_led_next` 正好对接 SDCC 的
-`mov dpl,#x; ljmp _led_next`。详见 [docs/03-C与Zig混编与ABI.md](../../docs/03-C与Zig混编与ABI.md)。
+`mov dpl,#x; ljmp _led_next`。详见 [03-C与Zig混编与ABI.md](03-C与Zig混编与ABI.md)。
 
 ## 扩展
 
@@ -97,5 +99,5 @@ export fn led_next(cur: u8) u8 {
   单字节/定长标量接口。
 - **切换到 MCS-251**：把 `build.ps1` 里的 `-mmcs51`→`-mmcs251`、
   `mcs51-freestanding`→`mcs251-freestanding`、`sdas8051`→`sdas251`，并按
-  [docs/05-移植到MCS-251.md](../../docs/05-移植到MCS-251.md) 准备 `sdcc-c251`。
+  [05-移植到MCS-251.md](05-移植到MCS-251.md) 准备 `sdcc-c251`。
 - **换外设**：直接调用 `port/stc-hal/` 下对应的 HAL（UART/PWM/Timer…）。
