@@ -1034,7 +1034,21 @@ target("cmd")
         os.vrunv(sdcc, table.join(cflags, {"-c", cordic_c, "-o", cordic_rel}))
         os.vrunv(sdcc, table.join(cflags, {"-c", mdu_c, "-o", mdu_rel}))
 
-        print("[2/2] link -> ihx: cmd.ihx")
+        -- 构建层死代码回收：以 main.asm（含 _main + IVT）为根，回收库模块未用函数/变量
+        print("[2/3] DCE       : 回收未使用函数/变量（cobs/cordic/mdu/uart251）")
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.dce_rel(projdir,
+            path.join(path.directory(sdcc), "sdas251.exe"),
+            get_config("python"),
+            {
+                {asm = path.join(scriptdir, "cobs.asm"),    rel = cobs_rel},
+                {asm = path.join(scriptdir, "cordic.asm"),  rel = cordic_rel},
+                {asm = path.join(scriptdir, "mdu.asm"),     rel = mdu_rel},
+                {asm = path.join(scriptdir, "uart251.asm"), rel = uart_rel},
+            },
+            {path.join(scriptdir, "main.asm")})
+
+        print("[3/3] link -> ihx: cmd.ihx")
         os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
                         main_rel, cobs_rel, uart_rel, cordic_rel, mdu_rel, "-o", ihx})
 

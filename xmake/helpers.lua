@@ -21,3 +21,28 @@ function postprocess_asm(projdir, asm)
         os.vrunv(python, {ovl, asm})
     end
 end
+
+-- 构建层死代码回收（未使用函数/变量）：对一批 .asm 做跨模块可达性分析，
+-- 以 keep 文件（入口/main/IVT/crt0）为根删掉不可达的全局符号块，再把**非 keep** 的
+-- .asm 重新汇编回 .rel（就地覆盖 SDCC 产出的 .rel）。工具缺失则跳过。
+--   entries: { {asm=<path>, rel=<path>}, ... }
+--   keep:    { <asm path>, ... }
+function dce_rel(projdir, sdas, python, entries, keep)
+    local dce = path.join(projdir, "tools/mcs_dce.py")
+    if not os.isfile(dce) then return end
+    local args = {dce}
+    for _, k in ipairs(keep) do
+        table.insert(args, "--keep"); table.insert(args, k)
+    end
+    for _, e in ipairs(entries) do
+        table.insert(args, e.asm)
+    end
+    os.vrunv(python, args)
+    for _, e in ipairs(entries) do
+        local iskeep = false
+        for _, k in ipairs(keep) do if k == e.asm then iskeep = true end end
+        if not iskeep then
+            os.vrunv(sdas, {"-plosgffw", e.rel, e.asm})
+        end
+    end
+end

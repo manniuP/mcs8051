@@ -35,6 +35,9 @@
 - [15-汇编瘦身工具mcs_opt](15-汇编瘦身工具mcs_opt.md) —— 构建层后处理 `tools/mcs_opt.py`
   （R1~R5：合并 spx 调整、删冗余 mov、常量转发、无用代码/跳转回收），无需重编编译器；
   含各例程 CSEG 实测（mcs251 普遍 -12~-18%，`zigmem` -40%；mcs51 很小）。
+- [16-死代码回收mcs_dce](16-死代码回收mcs_dce.md) —— 构建层 `tools/mcs_dce.py`：跨模块可达性
+  分析，删除**未被引用**的函数/变量（`sdld` 不回收未用段、C/Zig 同挤一个 CSEG）；`cmd` 实测
+  CSEG 21160→18486（-12.6%）。
 
 源码位置：`../examples/ai8051u_blink/`、`../examples/ai8051u_ptrtest/`
 （3 字节指针互操作见 [07](07-调试笔记-ptr_rt自举崩溃定位.md)）。
