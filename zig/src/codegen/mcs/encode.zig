@@ -191,6 +191,8 @@ pub const Operand = union(enum) {
     imm: Immediate,
     /// `#symbol` 立即数地址（如 `mov dptr,#_gv`）。
     imm_symbol: Address,
+    /// `#(symbol >> 16)`：24 位数据指针的高字节（`mov dpxl,#(_gv >> 16)`）。
+    imm_symbol_hi: Address,
     /// `@Ri`。
     at_ri: u1,
     /// `@DPTR`。
@@ -231,6 +233,11 @@ pub const Operand = union(enum) {
             .imm_symbol => |a| {
                 try w.writeByte('#');
                 try a.format(w, 6);
+            },
+            .imm_symbol_hi => |a| {
+                try w.writeAll("#(");
+                try a.format(w, 6);
+                try w.writeAll(" >> 16)");
             },
             .at_ri => |n| w.print("@r{d}", .{n}) catch return error.WriteFailed,
             .at_dptr => try w.writeAll("@dptr"),

@@ -72,6 +72,53 @@ pub inline fn nop() void {
     asm volatile ("nop");
 }
 
+// ---------------------------------------------------------------------------
+// UART1（P3.0/P3.1，阻塞式发送）
+// ---------------------------------------------------------------------------
+
+/// 初始化 UART1：模式1、仅发送，波特率发生器用 Timer1（1T、16 位自动重载），引脚 P3.0/P3.1。
+/// `fosc` 为系统时钟（Hz），`baud` 为波特率。
+///
+/// 示例：`uartInit(40_000_000, 9600);`
+pub inline fn uartInit(comptime fosc: u32, comptime baud: u32) void {
+    sfrWrite(0x98, 0x40); // SCON = 模式1（8 位 UART），REN=0
+    sfrAnd(0x8e, ~@as(u8, 0x01)); // AUXR.0=0  S1 波特率用 Timer1
+    sfrOr(0x8e, 0x40); // AUXR.6=1  Timer1 1T
+    sfrAnd(0x89, 0x0f); // TMOD：Timer1 模式0（16 位自动重载）
+    const reload: u16 = @intCast(65536 - fosc / 4 / baud);
+    sfrWrite(0x8d, @intCast((reload >> 8) & 0xff)); // TH1
+    sfrWrite(0x8b, @intCast(reload & 0xff)); // TL1
+    bitSet(0x88, 6); // TR1 = TCON.6
+    sfrAnd(0xa2, 0x3f); // P_SW1：UART1 选 P3.0/P3.1
+    sfrAnd(0xb1, ~@as(u8, 0x02)); // P3M1.1=0
+    sfrOr(0xb2, 0x02); // P3M0.1=1  P3.1 推挽输出
+}
+
+/// 阻塞发送一个字节（等 TI，再清 TI）。
+pub inline fn uartPutc(c: u8) void {
+    sfrPtr(0x99).* = c; // SBUF
+    while ((sfrPtr(0x98).* & 0x02) == 0) {} // 等 TI（SCON.1）
+    sfrAnd(0x98, ~@as(u8, 0x02)); // 清 TI
+}
+
+/// 发送字符串（`comptime` 字面量，逐字符内联展开）。
+///
+/// 示例：`uartPuts("\r\nOK\r\n");`
+pub inline fn uartPuts(comptime s: []const u8) void {
+    inline for (s) |c| uartPutc(c);
+}
+
+/// 打印一个字节为两位十六进制（如 `0xA1` → "a1"）。
+pub inline fn uartPutHex2(v: u8) void {
+    uartPutc(hexDigit(v >> 4));
+    uartPutc(hexDigit(v & 0x0f));
+}
+
+/// 半字节 → 十六进制字符（避免用运行期下标索引字符串——后端不支持）。
+inline fn hexDigit(n: u8) u8 {
+    return if (n < 10) @as(u8, '0') + n else @as(u8, 'a') + (n - 10);
+}
+
 /// 写 SFR：`mov dir8,#imm`。`addr` 为 SFR 字节地址（0x80–0xFF）。
 ///
 /// 示例：`sfrWrite(0x90, 0xfe); // P1 = 0xfe`

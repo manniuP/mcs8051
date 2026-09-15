@@ -1,32 +1,47 @@
-//! mem.zig — 用 `linksection` 把变量放到 AI8051U 的三个数据空间（纯 Zig，无 C）。
+//! mem.zig — 真机验证 data / idata / edata / xdata 四个空间：写入**互不相同**的模式，
+//! 再逐个回读比对，结果经 UART1(P3.1, 9600) 周期打印。
 //!
-//! - `.data`  → 片内直接 RAM（DSEG，`--data-loc 0x30` 起），访问 `mov dir8`（1 字节，最快）；
-//! - `.idata` → 片内间接 RAM（ISEG，`--idata-loc 0x80` 起），访问 `mov r0,#addr; mov a/@r0`；
-//! - `.xdata` → 扩展 RAM（XSEG，0x10000 起），访问 MOVX（DPTR）。
+//! - `data`  : `linksection(".data")`  → DSEG 0x30，直接寻址（`mov dir8`）
+//! - `idata` : `linksection(".idata")` → ISEG 0x80，@Ri 间接（`mov r0,#a; mov a/@r0`）
+//! - `edata` : 固定地址 0x0200（16 位 MOVX @DPTR；AI8051U 的 edata 在 0x0000 起）
+//! - `xdata` : `linksection(".xdata")` → XSEG 0x10000，24 位 `@dpx`
 //!
-//! 主循环让三个计数器自增；idata 计数每 256 次翻转 P1.1（配约 2ms 忙等 → 约 1Hz）。
-//! 能稳定闪烁即说明三个空间都能正常读写。
+//! 四个模式互不相同，任何别名/寻址错误都会让对应项 FAIL（而不是靠“灯闪”蒙混）。
 
 const m = @import("mcs");
 
-var c_data: u8 linksection(".data") = 0; // DSEG 0x30
-var c_idata: u8 linksection(".idata") = 0; // ISEG 0x80
-var c_xdata: u8 linksection(".xdata") = 0; // XSEG 0x10000
+var v_data: u8 linksection(".data") = 0;
+var v_idata: u8 linksection(".idata") = 0;
+var v_xdata: u8 linksection(".xdata") = 0;
 
-fn delay2ms() void {
+const p_edata: *volatile u8 = @ptrFromInt(0x0200); // edata 区，位于 SPX 栈(0x0100 起)之上
+
+inline fn item(got: u8, want: u8) void {
+    m.uartPutHex2(got);
+    if (got == want) m.uartPuts(" ok  ") else m.uartPuts(" FAIL ");
+}
+
+fn delay() void {
     var t: u16 = 0;
     while (t < 8000) : (t += 1) {}
 }
 
 export fn main() void {
-    m.sfrAnd(0x91, 0xfd); // P1M1.1 = 0
-    m.sfrOr(0x92, 0x02); // P1M0.1 = 1 -> P1.1 推挽输出
+    m.uartInit(40_000_000, 9600);
+    m.uartPuts("\r\nspaces (data, idata, edata, xdata):\r\n");
 
     while (true) {
-        c_data +%= 1;
-        c_xdata +%= c_data;
-        c_idata +%= 1;
-        if (c_idata == 0) m.bitCpl(0x90, 1); // 每 256 次翻转 P1.1
-        delay2ms();
+        v_data = 0xA1;
+        v_idata = 0xB2;
+        p_edata.* = 0xC3;
+        v_xdata = 0xD4;
+
+        item(v_data, 0xA1);
+        item(v_idata, 0xB2);
+        item(p_edata.*, 0xC3);
+        item(v_xdata, 0xD4);
+        m.uartPuts("\r\n");
+
+        delay();
     }
 }

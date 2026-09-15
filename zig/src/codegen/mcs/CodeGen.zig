@@ -2260,11 +2260,26 @@ const Gen = struct {
     }
 
     /// 读固定 xdata 地址 `addr` 的 `size` 字节到帧槽 `dst_disp`。
+    /// `<0x100` direct；`<0x10000` edata（`movx @dptr`）；`≥0x10000` xdata（`@dpx` 24 位）。
     fn derefFixedRead(gen: *Gen, addr: u32, size: u32, dst_disp: i32) codegen.CodeGenError!void {
         if (isDirectAddr(addr, size)) {
             var j: u32 = 0;
             while (j < size) : (j += 1) {
                 try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .dir8 = .{ .value = addr + j } } });
+                try gen.addInst(.mov, &.{
+                    gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                    .{ .reg = .a },
+                });
+            }
+            return;
+        }
+        if (addr + size - 1 >= 0x10000) {
+            var j: u32 = 0;
+            while (j < size) : (j += 1) {
+                const a = addr + j;
+                try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm = .{ .value = @intCast(a & 0xffff), .bits = 16 } } });
+                try gen.addInst(.mov, &.{ .{ .reg = .dpxl }, .{ .imm = .{ .value = @intCast((a >> 16) & 0xff), .bits = 8 } } });
+                try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .index = .{ .base = .dpx, .disp = 0 } } });
                 try gen.addInst(.mov, &.{
                     gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
                     .{ .reg = .a },
@@ -2284,13 +2299,24 @@ const Gen = struct {
         }
     }
 
-    /// 把 `src` 的 `size` 字节写固定 xdata 地址 `addr`。
+    /// 把 `src` 的 `size` 字节写固定 xdata 地址 `addr`（寻址同 `derefFixedRead`）。
     fn derefFixedWrite(gen: *Gen, addr: u32, src: Loc, size: u32) codegen.CodeGenError!void {
         if (isDirectAddr(addr, size)) {
             var j: u32 = 0;
             while (j < size) : (j += 1) {
                 try gen.loadByteToA(src, j, size);
                 try gen.addInst(.mov, &.{ .{ .dir8 = .{ .value = addr + j } }, .{ .reg = .a } });
+            }
+            return;
+        }
+        if (addr + size - 1 >= 0x10000) {
+            var j: u32 = 0;
+            while (j < size) : (j += 1) {
+                const a = addr + j;
+                try gen.loadByteToA(src, j, size);
+                try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm = .{ .value = @intCast(a & 0xffff), .bits = 16 } } });
+                try gen.addInst(.mov, &.{ .{ .reg = .dpxl }, .{ .imm = .{ .value = @intCast((a >> 16) & 0xff), .bits = 8 } } });
+                try gen.addInst(.mov, &.{ .{ .index = .{ .base = .dpx, .disp = 0 } }, .{ .reg = .a } });
             }
             return;
         }
@@ -2308,15 +2334,16 @@ const Gen = struct {
     fn derefSymbolRead(gen: *Gen, g: GlobalRef, size: u32, dst_disp: i32) codegen.CodeGenError!void {
         switch (g.space) {
             .xdata => {
-                try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm_symbol = .{ .symbol = g.name } } });
+                // 24 位 xdata（≥0x10000）：`mov dptr,#sym; mov dpxl,#(sym>>16); mov a,@dpx`。
                 var j: u32 = 0;
                 while (j < size) : (j += 1) {
-                    try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
+                    try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .reg = .dpxl }, .{ .imm_symbol_hi = .{ .symbol = g.name } } });
+                    try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .index = .{ .base = .dpx, .disp = 0 } } });
                     try gen.addInst(.mov, &.{
                         gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
                         .{ .reg = .a },
                     });
-                    if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
                 }
             },
             .data => {
@@ -2347,12 +2374,12 @@ const Gen = struct {
     fn derefSymbolWrite(gen: *Gen, g: GlobalRef, src: Loc, size: u32) codegen.CodeGenError!void {
         switch (g.space) {
             .xdata => {
-                try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm_symbol = .{ .symbol = g.name } } });
                 var j: u32 = 0;
                 while (j < size) : (j += 1) {
                     try gen.loadByteToA(src, j, size);
-                    try gen.addInst(.movx, &.{ .{ .at_dptr = {} }, .{ .reg = .a } });
-                    if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+                    try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .reg = .dpxl }, .{ .imm_symbol_hi = .{ .symbol = g.name } } });
+                    try gen.addInst(.mov, &.{ .{ .index = .{ .base = .dpx, .disp = 0 } }, .{ .reg = .a } });
                 }
             },
             .data => {
