@@ -34,6 +34,18 @@ static void put_hex32(unsigned long v)
     put_hex8((unsigned char)(v));
 }
 
+/* xorshift32 伪随机（运行期），用于生成测试向量，防编译器预计算。 */
+static volatile unsigned long rng_state = 0x1234ABCDUL;
+static unsigned long rng_next(void)
+{
+    unsigned long x = rng_state;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    rng_state = x;
+    return x;
+}
+
 void main(void)
 {
     unsigned int i;
@@ -105,6 +117,28 @@ void main(void)
         }
         uart_puts("signed pass=0"); uart_putc('0' + (unsigned char)sp);
         uart_puts(" fail=0"); uart_putc('0' + (unsigned char)sf);
+        uart_puts("\r\n");
+    }
+
+    /* 随机向量对拍：运行期随机 a/b，MDU 结果 vs C 软件参考（* / %），无法被折叠。 */
+    {
+        unsigned int k, rp = 0, rf = 0;
+        for (k = 0; k < 8; k++)
+        {
+            unsigned long a = rng_next();
+            unsigned long b = rng_next() | 1UL;          /* 非 0 */
+            unsigned long pm = mdu_mul32(a, b),  pr = a * b;
+            unsigned long qm = mdu_div32u(a, b), qr = a / b;
+            unsigned long rm = mdu_mod32u(a, b), rr = a % b;
+            long sm = mdu_div32s((long)a, (long)b), sr = (long)a / (long)b;
+            uart_puts("R"); put_hex8((unsigned char)k);
+            if (pm == pr && qm == qr && rm == rr && sm == sr)
+            { uart_puts(" PASS\r\n"); rp++; }
+            else
+            { uart_puts(" FAIL\r\n"); rf++; }
+        }
+        uart_puts("rand pass=0"); uart_putc('0' + (unsigned char)rp);
+        uart_puts(" fail=0"); uart_putc('0' + (unsigned char)rf);
         uart_puts("\r\n");
     }
 
