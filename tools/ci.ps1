@@ -35,9 +35,10 @@ $targets = @("ziglog","zigled","zigasm","zigirq","zigmem","zigbuzz","ptrtest","u
 if (-not $SkipUsb) { $targets += @("usbcdc","usbhid","usbcdcobs") }
 foreach ($t in $targets) { Step ("build " + $t) { xmake build $t } }
 
-# ---- 2) mcs51 simtest ----
+# ---- 2) mcs51 ----
 Step "xmake configure (mcs51)" { xmake f --mcs_arch=mcs51 }
 Step "build simtest" { xmake build simtest }
+Step "build ccobs51" { xmake build ccobs51 }
 Step "xmake configure (mcs251, restore)" { xmake f --mcs_arch=mcs251 }
 
 # ---- 3) host tests ----
@@ -57,6 +58,11 @@ if (-not $SkipSim) {
             $wslCmd = "cd <workspace>/mcs251 && $ucsim -t STC15 -S in=/dev/null,out=- " +
                       "examples/at89c52_sim/simtest.ihx < <user>/AppData/Local/Temp/opencode/simtest.cmd " +
                       "| grep -q 'aa 00 02 04 08 10 20 40'"
+            wsl -e bash -lc $wslCmd
+        }
+        Step "sim: ccobs51 8-bit cobs (expect 03 7e 02 04 34 12 24 00)" {
+            $wslCmd = "cd <workspace>/mcs251/examples/mcs51_c_cobs && $ucsim -t STC15 " +
+                      "-S in=/dev/null,out=- ccobs51.ihx < sim.cmd | grep -q '03 7e 02 04 34 12 24'"
             wsl -e bash -lc $wslCmd
         }
     } else {

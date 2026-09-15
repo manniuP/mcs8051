@@ -91,6 +91,7 @@
 /examples/ai8051u_usb_cdc/src/*.asm
 /examples/ai8051u_usb_hid/src/*.asm
 /examples/ai8051u_usb_cdc_cobs/*.asm
+/examples/mcs51_c_cobs/*.asm
 
 # Zig / xmake 构建缓存
 .zig-cache/

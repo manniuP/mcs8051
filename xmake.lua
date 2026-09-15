@@ -1172,3 +1172,59 @@ target("usbcdcobs")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
+
+-- ccobs51：8 位（mcs51）C 版 COBS 编码自检（lib/cobs/cobs.c，`--stack-auto` 栈帧）。
+-- 只编码进 __xdata out[]（不做硬件输出）；用 STC15/通用 8051 仿真 dump XRAM 核对：
+--   raw 7E 02 00 34 12 5A -> COBS+00 = 03 7E 02 04 34 12 5A 00, out_len = 8
+-- 用法：xmake f --mcs_arch=mcs51; xmake build ccobs51
+target("ccobs51")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs51" then
+            raise("ccobs51 仅支持 mcs51（加 --mcs-arch=mcs51）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/mcs51_c_cobs")
+        local cobsdir = path.join(projdir, "lib/cobs")
+        local sdcc = get_config("sdcc")
+        if not os.isfile(sdcc) then
+            raise("找不到工具：" .. sdcc .. "（用 --sdcc 覆盖路径）")
+        end
+
+        local main_c   = path.join(scriptdir, "main.c")
+        local main_rel = path.join(scriptdir, "main.rel")
+        local cobs_c   = path.join(cobsdir, "cobs.c")
+        local cobs_rel = path.join(scriptdir, "cobs.rel")
+        local ihx      = path.join(scriptdir, "ccobs51.ihx")
+        local cflags   = {"-mmcs51", "--model-large", "--stack-auto", "-I", cobsdir}
+
+        print("[1/3] C -> rel   : main.c")
+        os.vrunv(sdcc, table.join(cflags, {"-c", main_c, "-o", main_rel}))
+        print("[2/3] C -> rel   : lib/cobs/cobs.c")
+        os.vrunv(sdcc, table.join(cflags, {"-c", cobs_c, "-o", cobs_rel}))
+        print("[3/3] link -> ihx: ccobs51.ihx")
+        os.vrunv(sdcc, table.join({"-mmcs51", "--model-large", "--stack-auto"},
+                                  {main_rel, cobs_rel, "-o", ihx}))
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/mcs51_c_cobs")
+        for _, n in ipairs({"main.rel", "main.lst", "main.rst", "main.sym", "main.asm",
+                            "cobs.rel", "cobs.lst", "cobs.rst", "cobs.sym", "cobs.asm",
+                            "ccobs51.ihx", "ccobs51.lk", "ccobs51.map", "ccobs51.mem"}) do
+            os.tryrm(path.join(scriptdir, n))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs51 ccobs51")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
