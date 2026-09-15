@@ -25,6 +25,8 @@ extern u8 sum4(__xdata const u8 *buf);
 extern u8 add3(u8 a, u8 b, u8 c);
 extern u8 counter;                   /* Zig 定义的全局 */
 extern u8 bump(void);
+extern void wr_fixed(u8 v);          /* 固定 xdata 地址（@ptrFromInt） */
+extern u8 rd_fixed(void);
 
 __xdata __at(0x8000) volatile u8 status;
 __xdata __at(0x8001) volatile u8 failcode;
@@ -68,6 +70,12 @@ void main(void)
     }
     if (failcode == 0 && counter != 1) {
         failcode = 0x41;
+    }
+
+    /* 固定地址互操作：Zig 经 @ptrFromInt 读写 0x8020。 */
+    wr_fixed(0x5a);
+    if (failcode == 0 && rd_fixed() != 0x5a) {
+        failcode = 0x50;
     }
 
     status = (failcode == 0) ? 0xAA : 0x55;

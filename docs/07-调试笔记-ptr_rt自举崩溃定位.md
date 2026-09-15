@@ -732,3 +732,16 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\l
 
 至此 8 位（mcs51）C↔Zig 互操作覆盖：单标量、多参数、xdata 指针、全局变量。仍缺：
 切片、`@ptrFromInt(addr).*` 单元素指针。
+
+## 固定地址访问 `@ptrFromInt`（2026-09-15）
+
+- `CodeGen.zig` 新增 `fixedAddrOf`（识别 `.ptr` 的 `base_addr == .int`）与
+  `derefFixedRead/Write`（`mov dptr,#<addr>` + `movx`），在 `emitLoad`/`emitStore`
+  标量路径接入。
+- 验证：Zig `(@as(*volatile u8, @ptrFromInt(0x8010))).*` 读写与 C/仿真一致；
+  `at89c52_sim` 增加 0x8020 固定地址读写测试。
+- 局限：按 **xdata** 处理（MOVX）。**SFR 直址（0x80–0xFF）尚未区分**——用
+  `@ptrFromInt` 访问真实 SFR 需地址空间转换（后续）。
+
+至此 mcs51 C↔Zig 互操作覆盖：**单标量、多参数、xdata 指针、全局变量、固定地址**。
+仍缺：切片。

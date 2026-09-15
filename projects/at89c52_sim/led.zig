@@ -40,3 +40,12 @@ export fn bump() u8 {
     counter +%= 1;
     return counter;
 }
+
+/// 固定 xdata 地址读/写（验证 `@ptrFromInt`）。
+export fn wr_fixed(v: u8) void {
+    (@as(*volatile u8, @ptrFromInt(0x8020))).* = v;
+}
+
+export fn rd_fixed() u8 {
+    return (@as(*volatile u8, @ptrFromInt(0x8020))).*;
+}
