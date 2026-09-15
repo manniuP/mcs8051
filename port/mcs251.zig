@@ -123,69 +123,71 @@ inline fn hexDigit(n: u8) u8 {
 // 轻量二进制日志（defmt 风格；主机端按同一张 id→类型表解码）
 // ---------------------------------------------------------------------------
 
-/// 日志帧头：`0x7E, id_lo, id_hi`，返回校验初值（id 的 XOR）。
-inline fn logHead(comptime id: u16) u8 {
+/// 日志帧的校验累加字节（IRAM 直接区 0x32；不与 mem 示例的 0x30/0x31 冲突）。
+const log_ck: *volatile u8 = @ptrFromInt(0x32);
+
+/// 轻量二进制日志（defmt 风格）：帧 = `0x7E, id_lo, id_hi, 参数…, XOR 校验`。
+///
+/// 用法：`logBegin(id)` → 若干 `logU8/logU16/logU32/logVar/logStr` → `logEnd()`。
+/// 参数编码：`u8`=1B、`u16`=2B 小端、`u32`=4B 小端、`logVar`=LEB128 变长、
+/// `logStr`=`LEB128(len)+字节`。主机端按同一张 id→类型表解码。
+/// 后端不支持 tuple，故不提供 `log(id, .{…})`。
+pub inline fn logBegin(comptime id: u16) void {
     uartPutc(0x7e);
     const il: u8 = @truncate(id);
     const ih: u8 = @truncate(id >> 8);
     uartPutc(il);
     uartPutc(ih);
-    return il ^ ih;
+    log_ck.* = il ^ ih;
 }
 
-inline fn logP8(ck: *u8, v: u8) void {
-    uartPutc(v);
-    ck.* ^= v;
+/// 追加一个已算好校验的字节（内部用）。
+inline fn logRaw(b: u8) void {
+    uartPutc(b);
+    log_ck.* ^= b;
 }
 
-inline fn logP16(ck: *u8, v: u16) void {
-    logP8(ck, @truncate(v));
-    logP8(ck, @truncate(v >> 8));
+/// 追加 `u8`。
+pub inline fn logU8(v: u8) void {
+    logRaw(v);
 }
 
-inline fn logP32(ck: *u8, v: u32) void {
-    logP8(ck, @truncate(v));
-    logP8(ck, @truncate(v >> 8));
-    logP8(ck, @truncate(v >> 16));
-    logP8(ck, @truncate(v >> 24));
+/// 追加 `u16`（小端）。
+pub inline fn logU16(v: u16) void {
+    logRaw(@truncate(v));
+    logRaw(@truncate(v >> 8));
 }
 
-/// 轻量二进制日志（defmt 风格）：帧 = `0x7E, id_lo, id_hi, 参数…, XOR 校验`。
-///
-/// `id` 是每个日志点的编译期常量；参数按类型小端编码（u8=1、u16=2、u32=4 字节）。
-/// 主机端按同一张 id→类型表解码（见 `projects/ai8051u_zig_log/decode.ps1`）。
-/// 后端不支持 tuple，故按元数提供若干重载；都是 `inline`（绕开多参数 ABI）。
-///
-/// 示例：`logU16(0x0002, count);` / `logU8U8(0x0003, 0xab, 0xcd);`
-pub inline fn log0(comptime id: u16) void {
-    uartPutc(logHead(id));
+/// 追加 `u32`（小端）。
+pub inline fn logU32(v: u32) void {
+    logRaw(@truncate(v));
+    logRaw(@truncate(v >> 8));
+    logRaw(@truncate(v >> 16));
+    logRaw(@truncate(v >> 24));
 }
-pub inline fn logU8(comptime id: u16, a: u8) void {
-    var ck = logHead(id);
-    logP8(&ck, a);
-    uartPutc(ck);
+
+/// 追加无符号 LEB128（变长；小值省字节）。
+pub inline fn logVar(v: u16) void {
+    var x = v;
+    while (true) {
+        const b: u8 = @truncate(x & 0x7f);
+        x >>= 7;
+        if (x != 0) logRaw(b | 0x80) else {
+            logRaw(b);
+            break;
+        }
+    }
 }
-pub inline fn logU16(comptime id: u16, a: u16) void {
-    var ck = logHead(id);
-    logP16(&ck, a);
-    uartPutc(ck);
+
+/// 追加短字符串：`LEB128(len) + 原始字节`。
+pub inline fn logStr(comptime s: []const u8) void {
+    logVar(@intCast(s.len));
+    inline for (s) |c| logRaw(c);
 }
-pub inline fn logU32(comptime id: u16, a: u32) void {
-    var ck = logHead(id);
-    logP32(&ck, a);
-    uartPutc(ck);
-}
-pub inline fn logU8U8(comptime id: u16, a: u8, b: u8) void {
-    var ck = logHead(id);
-    logP8(&ck, a);
-    logP8(&ck, b);
-    uartPutc(ck);
-}
-pub inline fn logU16U16(comptime id: u16, a: u16, b: u16) void {
-    var ck = logHead(id);
-    logP16(&ck, a);
-    logP16(&ck, b);
-    uartPutc(ck);
+
+/// 结束一帧：发送 XOR 校验字节。
+pub inline fn logEnd() void {
+    uartPutc(log_ck.*);
 }
 
 /// 写 SFR：`mov dir8,#imm`。`addr` 为 SFR 字节地址（0x80–0xFF）。
