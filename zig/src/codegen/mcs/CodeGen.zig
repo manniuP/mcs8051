@@ -526,15 +526,19 @@ const Gen = struct {
             return;
         }
 
-        gen.stack_param_bytes += class.size;
         if (gen.arch == .mcs251) {
+            gen.stack_param_bytes += class.size;
             gen.vals[@intFromEnum(inst)] = .{
                 .incoming = -@as(i32, @intCast(2 + gen.stack_param_bytes)),
             };
         } else {
+            // MCS-51 栈约定（SDCC --stack-auto）：参数 2..N 由 caller 逆序压栈，
+            // 第 k 个（1 基）参数位于入口 SP - (2 + Σ size(2..k-1))。
+            const off = 2 + gen.stack_param_bytes;
+            gen.stack_param_bytes += class.size;
             const disp = gen.allocFrame(class.size);
             gen.vals[@intFromEnum(inst)] = .{ .frame = disp };
-            try gen.m51_incoming.put(gen.gpa, inst, 2 + gen.stack_param_bytes);
+            try gen.m51_incoming.put(gen.gpa, inst, off);
         }
     }
 
@@ -1430,6 +1434,24 @@ const Gen = struct {
         switch (gen.vals[@intFromEnum(inst)]) {
             .ptr_rt => |pr| {
                 if (pr.base_addr == 0) return; // 无 base，无需物化（参数 ptr_rt 直接用 addr）
+                if (gen.arch == .mcs51) {
+                    // MCS-51：16 位指针帧内小端（+0=低，+1=高），用 DPTR 做 16 位加。
+                    const ps = gen.ptrBytes();
+                    try gen.copyFrameBytes(pr.base_addr, pr.addr, ps);
+                    if (pr.off != 0) {
+                        const off: u32 = @intCast(pr.off);
+                        try gen.loadPtrToDptr(.{ .frame = pr.addr }, ps);
+                        try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .dpl } });
+                        try gen.addInst(.add, &.{ .{ .reg = .a }, .{ .imm = .{ .value = @intCast(off & 0xff), .bits = 8 } } });
+                        try gen.addInst(.mov, &.{ .{ .reg = .dpl }, .{ .reg = .a } });
+                        try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .dph } });
+                        try gen.addInst(.addc, &.{ .{ .reg = .a }, .{ .imm = .{ .value = @intCast((off >> 8) & 0xff), .bits = 8 } } });
+                        try gen.addInst(.mov, &.{ .{ .reg = .dph }, .{ .reg = .a } });
+                        try gen.addInst(.mov, &.{ gen.frameOperand(pr.addr + 0), .{ .reg = .dpl } });
+                        try gen.addInst(.mov, &.{ gen.frameOperand(pr.addr + 1), .{ .reg = .dph } });
+                    }
+                    return;
+                }
                 // 从源指针帧槽加载 3 字节地址到 DR28。
                 try gen.loadPtrToDr28(.{ .frame = pr.base_addr }, 3);
                 if (pr.off != 0) {
@@ -2023,8 +2045,30 @@ const Gen = struct {
         }
     }
 
-    /// 从帧槽 `addr_disp` 保存的绝对地址读取 `size` 字节到 `dst_disp`（大端，内存序）。
+    /// 把 `loc` 处的 2 字节 xdata 指针装入 DPTR（小端：低字节在 `loc` 偏移 0）。
+    fn loadPtrToDptr(gen: *Gen, loc: Loc, size: u32) codegen.CodeGenError!void {
+        try gen.loadByteToA(loc, 0, size);
+        try gen.addInst(.mov, &.{ .{ .reg = .dpl }, .{ .reg = .a } });
+        try gen.loadByteToA(loc, 1, size);
+        try gen.addInst(.mov, &.{ .{ .reg = .dph }, .{ .reg = .a } });
+    }
+
+    /// 从帧槽 `addr_disp` 保存的绝对地址读取 `size` 字节到 `dst_disp`（内存序）。
     fn derefRead(gen: *Gen, addr_disp: i32, size: u32, dst_disp: i32) codegen.CodeGenError!void {
+        if (gen.arch == .mcs51) {
+            // MCS-51：16 位 xdata 指针 -> DPTR，MOVX 读，逐字节 INC DPTR。
+            try gen.loadPtrToDptr(.{ .frame = addr_disp }, gen.ptrBytes());
+            var j: u32 = 0;
+            while (j < size) : (j += 1) {
+                try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
+                try gen.addInst(.mov, &.{
+                    gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                    .{ .reg = .a },
+                });
+                if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+            }
+            return;
+        }
         try gen.loadPtrToDr28(.{ .frame = addr_disp }, 3);
         var j: u32 = 0;
         while (j < size) : (j += 1) {
@@ -2040,8 +2084,19 @@ const Gen = struct {
         }
     }
 
-    /// 把 `src` 的 `size` 字节写到帧槽 `addr_disp` 保存的绝对地址（大端，内存序）。
+    /// 把 `src` 的 `size` 字节写到帧槽 `addr_disp` 保存的绝对地址（内存序）。
     fn derefWrite(gen: *Gen, addr_disp: i32, src: Loc, size: u32) codegen.CodeGenError!void {
+        if (gen.arch == .mcs51) {
+            // MCS-51：DPTR + MOVX 写，逐字节 INC DPTR。
+            try gen.loadPtrToDptr(.{ .frame = addr_disp }, gen.ptrBytes());
+            var j: u32 = 0;
+            while (j < size) : (j += 1) {
+                try gen.loadByteToA(src, j, size);
+                try gen.addInst(.movx, &.{ .{ .at_dptr = {} }, .{ .reg = .a } });
+                if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+            }
+            return;
+        }
         try gen.loadPtrToDr28(.{ .frame = addr_disp }, 3);
         var j: u32 = 0;
         while (j < size) : (j += 1) {
@@ -2284,11 +2339,6 @@ const Gen = struct {
         const elem_size: u32 = @intCast(result_ptr_ty.childType(gen.zcu).abiSize(gen.zcu));
         const addr = gen.vals[@intFromEnum(inst)].ptr_rt.addr;
         const src = if (bin.lhs.toIndex()) |li| gen.vals[@intFromEnum(li)] else MCValue.none;
-        switch (src) {
-            .ptr_rt => |pr| try gen.loadPtrToDr28(.{ .frame = pr.addr }, 3),
-            .frame => |d| try gen.loadPtrToDr28(.{ .frame = d }, 3),
-            else => return gen.fail("mcs backend: unsupported pointer base", .{}),
-        }
         const idx_ip = bin.rhs.toInterned().?;
         const bits = gen.getConstBits(idx_ip) orelse return gen.fail(
             "mcs backend: unsupported pointer offset",
@@ -2296,6 +2346,34 @@ const Gen = struct {
         );
         const signed: i64 = @bitCast(bits);
         const off = signed * @as(i64, elem_size);
+        if (gen.arch == .mcs51) {
+            // MCS-51：16 位指针帧内小端，用 DPTR 做 16 位加（负偏移按二进制补码加）。
+            const ps = gen.ptrBytes();
+            const src_disp: i32 = switch (src) {
+                .ptr_rt => |pr| pr.addr,
+                .frame => |d| d,
+                else => return gen.fail("mcs backend: unsupported pointer base", .{}),
+            };
+            try gen.copyFrameBytes(src_disp, addr, ps);
+            if (off != 0) {
+                const uoff: u32 = @truncate(@as(u64, @bitCast(off)));
+                try gen.loadPtrToDptr(.{ .frame = addr }, ps);
+                try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .dpl } });
+                try gen.addInst(.add, &.{ .{ .reg = .a }, .{ .imm = .{ .value = @intCast(uoff & 0xff), .bits = 8 } } });
+                try gen.addInst(.mov, &.{ .{ .reg = .dpl }, .{ .reg = .a } });
+                try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .dph } });
+                try gen.addInst(.addc, &.{ .{ .reg = .a }, .{ .imm = .{ .value = @intCast((uoff >> 8) & 0xff), .bits = 8 } } });
+                try gen.addInst(.mov, &.{ .{ .reg = .dph }, .{ .reg = .a } });
+                try gen.addInst(.mov, &.{ gen.frameOperand(addr + 0), .{ .reg = .dpl } });
+                try gen.addInst(.mov, &.{ gen.frameOperand(addr + 1), .{ .reg = .dph } });
+            }
+            return;
+        }
+        switch (src) {
+            .ptr_rt => |pr| try gen.loadPtrToDr28(.{ .frame = pr.addr }, 3),
+            .frame => |d| try gen.loadPtrToDr28(.{ .frame = d }, 3),
+            else => return gen.fail("mcs backend: unsupported pointer base", .{}),
+        }
         if (off > 0) {
             try gen.addInst(.add, &.{ .{ .reg = .{ .dr = 7 } }, .{ .imm = .{ .value = @intCast(off), .bits = 16 } } });
         } else if (off < 0) {
