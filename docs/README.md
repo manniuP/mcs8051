@@ -32,6 +32,9 @@
   共用同一 64K Flash/复位入口，两种固件不能并存（含 8 位固件构建方法）。
 - [14-USB-CDC移植笔记](14-USB-CDC移植笔记.md) —— 把 STC 的 Keil C251 库（USB）移植到 SDCC
   mcs251 的完整方法，含两个 SDCC 专属坑（IVT 只在 main 模块、ISR 共享变量需 volatile）。
+- [15-汇编瘦身工具mcs_opt](15-汇编瘦身工具mcs_opt.md) —— 构建层后处理 `tools/mcs_opt.py`
+  （R1~R5：合并 spx 调整、删冗余 mov、常量转发、无用代码/跳转回收），无需重编编译器；
+  含各例程 CSEG 实测（mcs251 普遍 -12~-18%，`zigmem` -40%；mcs51 很小）。
 
 源码位置：`../examples/ai8051u_blink/`、`../examples/ai8051u_ptrtest/`
 （3 字节指针互操作见 [07](07-调试笔记-ptr_rt自举崩溃定位.md)）。

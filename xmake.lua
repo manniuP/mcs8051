@@ -46,7 +46,12 @@ option("sdcc251")
 option("python")
     set_default(os.getenv("PYTHON") or "python")
     set_showmenu(true)
-    set_description("Python 解释器（跑 tools/fix_mcs_labels.py，修局部标签重名）")
+    set_description("Python 解释器（跑 tools/fix_mcs_labels.py、tools/mcs_opt.py）")
+
+-- Zig 后端生成的 .asm 在构建层做后处理（无需重编 zig.exe）：
+--   1) fix_mcs_labels.py：按函数给局部标签 L<n> 加前缀，消除跨函数重名；
+--   2) mcs_opt.py：局部优化瘦身（合并 spx 调整、冗余 mov、常量转发）。
+-- 注意：xmake 的 on_build 沙箱看不到脚本级函数，故在各目标里内联调用。
 
 target("blink")
     set_kind("phony")
@@ -112,6 +117,10 @@ target("blink")
         local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, led_asm})
+        end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, led_asm})
         end
 
         -- [3/4] .asm -> .rel
@@ -210,6 +219,10 @@ target("ptrtest")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, zig_asm})
         end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, zig_asm})
+        end
 
         -- [4/5] .asm -> .rel
         print("[4/5] asm -> rel : ptrtest.asm")
@@ -289,6 +302,10 @@ target("simtest")
         local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, zig_asm})
+        end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, zig_asm})
         end
 
         -- [3/4] .asm -> .rel
@@ -510,6 +527,10 @@ target("zigled")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, led_asm})
         end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, led_asm})
+        end
 
         -- [3/5] .asm -> .rel
         print("[3/5] asm -> rel : led.asm")
@@ -592,6 +613,10 @@ target("zigasm")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, led_asm})
         end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, led_asm})
+        end
 
         -- [3/5] .asm -> .rel
         print("[3/5] asm -> rel : led.asm")
@@ -671,6 +696,10 @@ target("zigirq")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, isr_asm})
         end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, isr_asm})
+        end
 
         print("[3/5] asm -> rel : isr.asm")
         os.vrunv(sdas, {"-plosgffw", isr_rel, isr_asm})
@@ -746,6 +775,10 @@ target("zigmem")
         local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, mem_asm})
+        end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, mem_asm})
         end
 
         print("[3/5] asm -> rel : mem.asm")
@@ -823,6 +856,10 @@ target("zigbuzz")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, src_asm})
         end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, src_asm})
+        end
 
         print("[3/5] asm -> rel : buzzer.asm")
         os.vrunv(sdas, {"-plosgffw", src_rel, src_asm})
@@ -899,6 +936,10 @@ target("ziglog")
         local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, src_asm})
+        end
+        local opt = path.join(projdir, "tools/mcs_opt.py")
+        if os.isfile(opt) then
+            os.vrunv(get_config("python"), {opt, src_asm})
         end
 
         print("[3/5] asm -> rel : log.asm")
