@@ -1355,6 +1355,10 @@ const Gen = struct {
             try gen.derefSymbolRead(sym, size, gen.vals[@intFromEnum(inst)].frame);
             return;
         }
+        if (gen.fixedAddrOf(ty_op.operand)) |addr| {
+            try gen.derefFixedRead(addr, size, gen.vals[@intFromEnum(inst)].frame);
+            return;
+        }
         const disp = try gen.storageDisp(ty_op.operand);
         try gen.moveValue(.{ .frame = disp }, gen.vals[@intFromEnum(inst)], size);
     }
@@ -1430,6 +1434,10 @@ const Gen = struct {
         }
         if (try gen.globalSymbolOf(bin.lhs)) |sym| {
             try gen.derefSymbolWrite(sym, src, size);
+            return;
+        }
+        if (gen.fixedAddrOf(bin.lhs)) |addr| {
+            try gen.derefFixedWrite(addr, src, size);
             return;
         }
         const disp = try gen.storageDisp(bin.lhs);
@@ -2133,6 +2141,45 @@ const Gen = struct {
         const name = try std.fmt.allocPrint(gen.gpa, "_{s}", .{raw});
         try gen.mir.addOwned(gen.gpa, name);
         return name;
+    }
+
+    /// 固定整数地址（`@ptrFromInt`）的编译期值（xdata）。
+    fn fixedAddrOf(gen: *Gen, ref: Air.Inst.Ref) ?u32 {
+        const ip_index = ref.toInterned() orelse return null;
+        const ip = &gen.zcu.intern_pool;
+        const addr: u64 = switch (ip.indexToKey(ip_index)) {
+            .ptr => |p| switch (p.base_addr) {
+                .int => p.byte_offset,
+                else => return null,
+            },
+            else => return null,
+        };
+        return @truncate(addr);
+    }
+
+    /// 读固定 xdata 地址 `addr` 的 `size` 字节到帧槽 `dst_disp`。
+    fn derefFixedRead(gen: *Gen, addr: u32, size: u32, dst_disp: i32) codegen.CodeGenError!void {
+        try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm = .{ .value = @intCast(addr & 0xffff), .bits = 16 } } });
+        var j: u32 = 0;
+        while (j < size) : (j += 1) {
+            try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
+            try gen.addInst(.mov, &.{
+                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                .{ .reg = .a },
+            });
+            if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+        }
+    }
+
+    /// 把 `src` 的 `size` 字节写固定 xdata 地址 `addr`。
+    fn derefFixedWrite(gen: *Gen, addr: u32, src: Loc, size: u32) codegen.CodeGenError!void {
+        try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm = .{ .value = @intCast(addr & 0xffff), .bits = 16 } } });
+        var j: u32 = 0;
+        while (j < size) : (j += 1) {
+            try gen.loadByteToA(src, j, size);
+            try gen.addInst(.movx, &.{ .{ .at_dptr = {} }, .{ .reg = .a } });
+            if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+        }
     }
 
     /// 读全局符号 `sym`（xdata）的 `size` 字节到帧槽 `dst_disp`。
