@@ -2190,10 +2190,11 @@ const Gen = struct {
     /// 全局符号所在的数据空间（由 `linksection` 选择）。
     const SymbolSpace = enum { xdata, data, idata };
 
-    /// 一个全局/外部数据符号：ASxxxx 名（`_` 前缀）+ 空间。
+    /// 一个全局/外部数据符号：ASxxxx 名（`_` 前缀）+ 空间 + 编译期字节偏移（数组元素）。
     const GlobalRef = struct {
         name: []const u8,
         space: SymbolSpace = .xdata,
+        off: u32 = 0,
     };
 
     /// 直接寻址操作数：`sym` 或 `sym+off`（8 位直址）。
@@ -2214,9 +2215,11 @@ const Gen = struct {
         const ip_index = ref.toInterned() orelse return null;
         const ip = &gen.zcu.intern_pool;
         var space: SymbolSpace = .xdata;
+        var off: u32 = 0;
         const raw: []const u8 = switch (ip.indexToKey(ip_index)) {
             .ptr => |p| switch (p.base_addr) {
                 .nav => |nav| blk: {
+                    off = @truncate(p.byte_offset);
                     const n = ip.getNav(nav);
                     if (n.resolved) |r| {
                         if (r.@"linksection".toSlice(ip)) |s| {
@@ -2236,7 +2239,7 @@ const Gen = struct {
         };
         const name = try std.fmt.allocPrint(gen.gpa, "_{s}", .{raw});
         try gen.mir.addOwned(gen.gpa, name);
-        return .{ .name = name, .space = space };
+        return .{ .name = name, .space = space, .off = off };
     }
 
     /// 固定整数地址（`@ptrFromInt`）的编译期值（xdata）。
@@ -2337,7 +2340,7 @@ const Gen = struct {
                 // 24 位 xdata（≥0x10000）：`mov dptr,#sym; mov dpxl,#(sym>>16); mov a,@dpx`。
                 var j: u32 = 0;
                 while (j < size) : (j += 1) {
-                    try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, g.off + j) });
                     try gen.addInst(.mov, &.{ .{ .reg = .dpxl }, .{ .imm_symbol_hi = .{ .symbol = g.name } } });
                     try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .index = .{ .base = .dpx, .disp = 0 } } });
                     try gen.addInst(.mov, &.{
@@ -2349,7 +2352,7 @@ const Gen = struct {
             .data => {
                 var j: u32 = 0;
                 while (j < size) : (j += 1) {
-                    try gen.addInst(.mov, &.{ .{ .reg = .a }, directOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .reg = .a }, directOperand(g.name, g.off + j) });
                     try gen.addInst(.mov, &.{
                         gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
                         .{ .reg = .a },
@@ -2359,7 +2362,7 @@ const Gen = struct {
             .idata => {
                 var j: u32 = 0;
                 while (j < size) : (j += 1) {
-                    try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, immAddrOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, immAddrOperand(g.name, g.off + j) });
                     try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .at_ri = 0 } });
                     try gen.addInst(.mov, &.{
                         gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
@@ -2377,7 +2380,7 @@ const Gen = struct {
                 var j: u32 = 0;
                 while (j < size) : (j += 1) {
                     try gen.loadByteToA(src, j, size);
-                    try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, g.off + j) });
                     try gen.addInst(.mov, &.{ .{ .reg = .dpxl }, .{ .imm_symbol_hi = .{ .symbol = g.name } } });
                     try gen.addInst(.mov, &.{ .{ .index = .{ .base = .dpx, .disp = 0 } }, .{ .reg = .a } });
                 }
@@ -2386,14 +2389,14 @@ const Gen = struct {
                 var j: u32 = 0;
                 while (j < size) : (j += 1) {
                     try gen.loadByteToA(src, j, size);
-                    try gen.addInst(.mov, &.{ directOperand(g.name, j), .{ .reg = .a } });
+                    try gen.addInst(.mov, &.{ directOperand(g.name, g.off + j), .{ .reg = .a } });
                 }
             },
             .idata => {
                 var j: u32 = 0;
                 while (j < size) : (j += 1) {
                     try gen.loadByteToA(src, j, size);
-                    try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, immAddrOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, immAddrOperand(g.name, g.off + j) });
                     try gen.addInst(.mov, &.{ .{ .at_ri = 0 }, .{ .reg = .a } });
                 }
             },
