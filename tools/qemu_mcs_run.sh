@@ -52,10 +52,15 @@ sleep 1.5
 
 if [ "$SMOKE" = "1" ]; then
   CMDPY="$REPO/examples/ai8051u_cmd/host/cmd.py"
-  for c in "ping" "mul 0x12345678 2" "div 1000 7" "led 1" "echo hello"; do
+  # 注意：mul/div 走 AI8051U 的 MDU（DMAIR@0xED），而 QEMU 的 0xED 是 TFPU →
+  # 这两条**无法仿真**，只能真机。此处只冒烟可仿真的部分。
+  for c in "ping" "led 1" "echo hello"; do
     echo "### $c"
     python3 "$CMDPY" --tcp "127.0.0.1:$PORT" -w 1.5 $c || echo "(失败)"
   done
+  echo "### cordictest（随机对拍 Python math）"
+  python3 "$CMDPY" --tcp "127.0.0.1:$PORT" -w 0.2 cordictest || echo "(失败)"
+  echo "（mul/div = MDU，需真机：python3 $CMDPY -p COM8 mul 0x12345678 2）"
   exit 0
 fi
 

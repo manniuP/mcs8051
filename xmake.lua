@@ -1005,6 +1005,7 @@ target("cmd")
         local uartdir = path.join(projdir, "lib/uart251")
         local cobsdir = path.join(projdir, "lib/cobs")
         local cordicdir = path.join(projdir, "lib/cordic")
+        local mdudir = path.join(projdir, "lib/mdu")
 
         local sdcc = get_config("sdcc251")
         if not os.isfile(sdcc) then
@@ -1015,23 +1016,27 @@ target("cmd")
         local cobs_c    = path.join(cobsdir, "cobs.c")
         local uart_c    = path.join(uartdir, "uart251.c")
         local cordic_c  = path.join(cordicdir, "cordic.c")
+        local mdu_c     = path.join(mdudir, "mdu.c")
         local main_rel  = path.join(scriptdir, "main.rel")
         local cobs_rel  = path.join(scriptdir, "cobs.rel")
         local uart_rel  = path.join(scriptdir, "uart251.rel")
         local cordic_rel = path.join(scriptdir, "cordic.rel")
+        local mdu_rel   = path.join(scriptdir, "mdu.rel")
         local ihx       = path.join(scriptdir, "cmd.ihx")
         local cflags    = {"-mmcs251", "--model-large", "-DUART_BAUD=115200UL",
-                           "-I", incdir, "-I", haldir, "-I", uartdir, "-I", cobsdir, "-I", cordicdir}
+                           "-I", incdir, "-I", haldir, "-I", uartdir, "-I", cobsdir,
+                           "-I", cordicdir, "-I", mdudir}
 
-        print("[1/2] C -> rel   : main.c cobs.c uart251.c cordic.c")
+        print("[1/2] C -> rel   : main.c cobs.c uart251.c cordic.c mdu.c")
         os.vrunv(sdcc, table.join(cflags, {"-c", main_c, "-o", main_rel}))
         os.vrunv(sdcc, table.join(cflags, {"-c", cobs_c, "-o", cobs_rel}))
         os.vrunv(sdcc, table.join(cflags, {"-c", uart_c, "-o", uart_rel}))
         os.vrunv(sdcc, table.join(cflags, {"-c", cordic_c, "-o", cordic_rel}))
+        os.vrunv(sdcc, table.join(cflags, {"-c", mdu_c, "-o", mdu_rel}))
 
         print("[2/2] link -> ihx: cmd.ihx")
         os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
-                        main_rel, cobs_rel, uart_rel, cordic_rel, "-o", ihx})
+                        main_rel, cobs_rel, uart_rel, cordic_rel, mdu_rel, "-o", ihx})
 
         target:set("targetfile", ihx)
         print("OK -> " .. ihx)
@@ -1039,9 +1044,9 @@ target("cmd")
 
     on_clean(function(target)
         local scriptdir = path.join(os.projectdir(), "examples/ai8051u_cmd")
-        for _, name in ipairs({"main.rel", "cobs.rel", "uart251.rel", "cordic.rel",
+        for _, name in ipairs({"main.rel", "cobs.rel", "uart251.rel", "cordic.rel", "mdu.rel",
                               "main.lst", "main.rst", "main.sym", "cobs.lst", "cobs.rst", "cobs.sym",
-                              "cordic.lst", "cordic.rst", "cordic.sym",
+                              "cordic.lst", "cordic.rst", "cordic.sym", "mdu.lst", "mdu.rst", "mdu.sym",
                               "uart251.lst", "uart251.rst", "uart251.sym",
                               "cmd.ihx", "cmd.lk", "cmd.map", "cmd.mem", "cmd.lst", "cmd.rst", "cmd.sym"}) do
             os.tryrm(path.join(scriptdir, name))

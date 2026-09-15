@@ -20,8 +20,8 @@
 | 命令 id | 参数 | 应答 id | 应答 |
 | --- | --- | --- | --- |
 | `0x0001` ping | — | `0x8001` | u16 `0x1234` |
-| `0x0002` mul | u32 a, u32 b | `0x8002` | u32 `a*b` |
-| `0x0003` div | u32 a, u32 b | `0x8003` | u32 q, u32 r（b=0 → 均 `0xFFFFFFFF`） |
+| `0x0002` mul | u32 a, u32 b | `0x8002` | u32 `a*b`（**MDU 硬件**，指令码 0x02） |
+| `0x0003` div | u32 a, u32 b | `0x8003` | u32 q, u32 r（**MDU 硬件**，指令码 0x04；b=0 → 均 `0xFFFFFFFF`） |
 | `0x0004` led | u8 on | `0x8004` | u8 状态（P1.1） |
 | `0x0005` echo | 原始字节 | `0x8005` | 原样回显 |
 | `0x0010` cossin | i16 角(BAM) | `0x8010` | i16 cos, i16 sin（Q15） |
@@ -72,13 +72,20 @@ python3 examples/ai8051u_cmd/host/cmd.py --tcp 127.0.0.1:5555 cordictest
 - `cmd.py` 新增 `--tcp host:port`：把 QEMU 的 socket 串口当串口用（QEMU 下默认逐字节慢发）。
 - 两个 QEMU 坑：① 只有 **`.hex`** 后缀才走 Intel HEX 载入器（`.ihx` 会被当 raw → 表现为"什么都没跑"）；
   ② QEMU **不建模串口位时序**，整块灌会覆盖 `SBUF` → 必须逐字节喂（脚本已处理）。
-- 实测：QEMU 结果与真机**逐条一致**（`pong 0x1234` / `mul=0x2468ACF0` / `div q=142 r=6` / `echo "hello"` / `led=1`）。
+- 实测：`ping/led/echo/cordictest` 在 QEMU 与真机一致。
+- **`mul`/`div` 现走 AI8051U 的 MDU（`DMAIR@0xED`）**；QEMU 的 `0xED` 是 **TFPU**（STC32G），
+  不能仿真 MDU → 这两条**只能真机**（`qemu_mcs_run.sh --smoke` 已不含它们）。
 
 ## 真机结果（AI8051U-34K64，COM8 @115200，2026-09-16）
 
-- `ping` → `pong 0x1234`；`mul 0x12345678*2` → `0x2468ACF0`；`div 1000/7` → `q=142 r=6`；
-  `echo hello` → `"hello"`；`led 1/0` → `state=1/0`。
-- 边界：`div 100 0` → `0xFFFFFFFF/0xFFFFFFFF`；`mul 0xFFFFFFFF²` → `1`；**连发 20 × ping → 20/20 回包**。
+- `ping` → `pong 0x1234`；`echo hello` → `"hello"`；`led 1/0` → `state=1/0`。
+- **`mul`/`div` 走 MDU 硬件**（`lib/mdu`，指令码 0x02/0x04，`CRITICAL` 保护 R0–R7）：
+  - `mul 0x12345678 2` → `0x2468ACF0`；`mul 0xFFFFFFFF 0xFFFFFFFF` → `1`；
+    `mul 0 0xFFFFFFFF` → `0`；`mul 0x10000000 3` → `0x30000000`。
+  - `div 0x10000000 3` → `q 0x05555555 r 1`；`div 0xFFFFFFFF 3` → `q 0x55555555 r 0`；
+    `div 0xFFFFFFFF 1` → `q 0xFFFFFFFF r 0`；`div 1 0xFFFFFFFF` → `q 0 r 1`；
+    `div 0xFFFFFFFE 0xFFFFFFFF` → `q 0 r 0xFFFFFFFE`；`div 100 0` → `0xFFFFFFFF/0xFFFFFFFF`。
+- `cordictest` 130/130（QEMU/真机同源）；`div 1000 7` → `q=142 r=6`。
 
 ## 说明 / 坑
 

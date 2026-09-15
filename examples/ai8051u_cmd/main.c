@@ -7,8 +7,8 @@
  *
  * 命令（id）与应答（id | 0x8000）：
  *   0x0001 ping  —                      → 0x8001 u16 0x1234
- *   0x0002 mul   — u32 a, u32 b         → 0x8002 u32 (a*b)
- *   0x0003 div   — u32 a, u32 b         → 0x8003 u32 q, u32 r   （b=0 → 均 0xFFFFFFFF）
+ *   0x0002 mul   — u32 a, u32 b         → 0x8002 u32 (a*b)      （MDU 硬件，指令码 0x02）
+ *   0x0003 div   — u32 a, u32 b         → 0x8003 u32 q, u32 r   （MDU 硬件，指令码 0x04；b=0 → 均 0xFFFFFFFF）
  *   0x0004 led   — u8 on(0/1)           → 0x8004 u8 状态（P1.1）
  *   0x0005 echo  — 原始字节             → 0x8005 原样回显
  *   0x0010 cossin— i16 角(BAM)          → 0x8010 i16 cos, i16 sin（Q15）
@@ -26,6 +26,7 @@
 #include "uart251.h"
 #include "cobs.h"
 #include "cordic.h"
+#include "ai8051u_mdu.h"      /* 32 位硬件乘除（DMAIR @0xED） */
 
 #define FRAME_MAX   128
 
@@ -87,22 +88,33 @@ static void handle(unsigned int id, const unsigned char *p, unsigned int n)
         reply();
         break;
 
-    case 0x0002:                              /* mul */
+    case 0x0002:                              /* mul → 走 MDU 硬件（指令码 0x02） */
         if (n >= 8) {
             unsigned long a = rd32(p);
             unsigned long b = rd32(p + 4);
+            unsigned long r;
+            CRITICAL { r = mdu_mul32(a, b); } /* MDU 用 R0-R7：关中断防串口 ISR 踩操作数 */
             cobs_log_begin(&enc, 0x8002);
-            cobs_log_u32(&enc, a * b);
+            cobs_log_u32(&enc, r);
             reply();
         }
         break;
 
-    case 0x0003:                              /* div → 商, 余 */
+    case 0x0003:                              /* div → 走 MDU 硬件（指令码 0x04），商+余 */
         if (n >= 8) {
             unsigned long a = rd32(p);
             unsigned long b = rd32(p + 4);
-            unsigned long q = b ? (a / b) : 0xFFFFFFFFUL;
-            unsigned long r = b ? (a % b) : 0xFFFFFFFFUL;
+            unsigned long q;
+            unsigned long r;
+            if (b == 0) {                     /* 保持与软件版一致的除零约定 */
+                q = 0xFFFFFFFFUL;
+                r = 0xFFFFFFFFUL;
+            } else {
+                CRITICAL {
+                    q = mdu_div32u(a, b);
+                    r = mdu_mod32u(a, b);
+                }
+            }
             cobs_log_begin(&enc, 0x8003);
             cobs_log_u32(&enc, q);
             cobs_log_u32(&enc, r);
