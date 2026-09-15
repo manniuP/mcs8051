@@ -51,7 +51,8 @@ option("python")
 -- Zig 后端生成的 .asm 在构建层做后处理（无需重编 zig.exe）：
 --   1) fix_mcs_labels.py：按函数给局部标签 L<n> 加前缀，消除跨函数重名；
 --   2) mcs_opt.py：局部优化瘦身（合并 spx 调整、冗余 mov、常量转发）。
--- 注意：xmake 的 on_build 沙箱看不到脚本级函数，故在各目标里内联调用。
+-- 公共逻辑抽在 `xmake/helpers.lua`；因 on_build 沙箱看不到脚本级函数，
+-- 目标里用 `local h = import("xmake.helpers", {rootdir = projdir})` 调用。
 
 target("blink")
     set_kind("phony")
@@ -114,14 +115,8 @@ target("blink")
 
         -- [2.5/4] 修局部标签重名：后端每个函数从 0 重新编号 L<n>，同一 .asm 内
         -- 多个含分支的函数会撞名（sdas 报 multiple definitions / phase error）。
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, led_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, led_asm})
-        end
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, led_asm)
 
         -- [3/4] .asm -> .rel
         print(("[3/4] asm -> rel  : %s"):format(path.filename(led_asm)))
@@ -215,14 +210,8 @@ target("ptrtest")
         os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. zig_asm, zig_src})
 
         -- [3/5] 修局部标签重名（同 blink；见 tools/fix_mcs_labels.py）
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, zig_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, zig_asm})
-        end
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, zig_asm)
 
         -- [4/5] .asm -> .rel
         print("[4/5] asm -> rel : ptrtest.asm")
@@ -299,14 +288,8 @@ target("simtest")
         os.vrunv(zig, {"build-obj", "-target", "mcs51-freestanding", "-femit-bin=" .. zig_asm, zig_src})
 
         -- [2.5/4] 修局部标签重名
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, zig_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, zig_asm})
-        end
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, zig_asm)
 
         -- [3/4] .asm -> .rel
         print("[3/4] asm -> rel : led.asm")
@@ -523,14 +506,8 @@ target("zigled")
                        "-femit-bin=" .. led_asm})
 
         -- [2/5] 修局部标签重名（tools/fix_mcs_labels.py）
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, led_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, led_asm})
-        end
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, led_asm)
 
         -- [3/5] .asm -> .rel
         print("[3/5] asm -> rel : led.asm")
@@ -608,15 +585,9 @@ target("zigasm")
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. led_asm})
 
-        -- [2/5] 修局部标签重名
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, led_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, led_asm})
-        end
+        -- [2/5] 后处理：修局部标签重名 + 局部瘦身（xmake/helpers.lua）
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, led_asm)
 
         -- [3/5] .asm -> .rel
         print("[3/5] asm -> rel : led.asm")
@@ -692,14 +663,8 @@ target("zigirq")
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. isr_asm})
 
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, isr_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, isr_asm})
-        end
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, isr_asm)
 
         print("[3/5] asm -> rel : isr.asm")
         os.vrunv(sdas, {"-plosgffw", isr_rel, isr_asm})
@@ -772,14 +737,8 @@ target("zigmem")
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. mem_asm})
 
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, mem_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, mem_asm})
-        end
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, mem_asm)
 
         print("[3/5] asm -> rel : mem.asm")
         os.vrunv(sdas, {"-plosgffw", mem_rel, mem_asm})
@@ -852,14 +811,8 @@ target("zigbuzz")
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. src_asm})
 
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, src_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, src_asm})
-        end
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, src_asm)
 
         print("[3/5] asm -> rel : buzzer.asm")
         os.vrunv(sdas, {"-plosgffw", src_rel, src_asm})
@@ -933,14 +886,8 @@ target("ziglog")
                        "-Mcobs=" .. path.join(projdir, "lib/cobs/cobs.zig"),
                        "-femit-bin=" .. src_asm})
 
-        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
-        if os.isfile(fixer) then
-            os.vrunv(get_config("python"), {fixer, src_asm})
-        end
-        local opt = path.join(projdir, "tools/mcs_opt.py")
-        if os.isfile(opt) then
-            os.vrunv(get_config("python"), {opt, src_asm})
-        end
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, src_asm)
 
         print("[3/5] asm -> rel : log.asm")
         os.vrunv(sdas, {"-plosgffw", src_rel, src_asm})
