@@ -1,11 +1,11 @@
-//! led.zig — 纯 Zig 点灯，用 comptime 宏生成的内联汇编做 **SFR 位操作**。
+//! led.zig — 纯 Zig 点灯，用共享硬件宏库 `mcs`（= `port/mcs251.zig`）做 SFR 位操作。
 //!
-//! 与 `ai8051u_zig_led` 的区别：这里用 `sfr.setBit/clrBit` 对 P1.1 做位操作
-//! （Zig 本身不便表达），体现「Zig 宏 → 内联汇编」的用法。
+//! 构建时通过 `--dep mcs -Mmcs=<仓库>/port/mcs251.zig` 注入该模块，源码里 `@import("mcs")`。
+//! 见 `mcs251.zig` 顶部的用法示例（zls 悬停可显示）。
 
-const sfr = @import("sfr.zig");
+const m = @import("mcs");
 
-const P1   = 0x90; // P1
+const P1 = 0x90; // P1
 const P1M1 = 0x91;
 const P1M0 = 0x92;
 
@@ -18,13 +18,13 @@ fn delay500ms() void {
 }
 
 export fn main() void {
-    sfr.andMask(P1M1, 0xfd); // P1M1.1 = 0
-    sfr.orMask(P1M0, 0x02); // P1M0.1 = 1  -> P1.1 推挽输出
+    m.sfrAnd(P1M1, 0xfd); // P1M1.1 = 0
+    m.sfrOr(P1M0, 0x02); // P1M0.1 = 1  -> P1.1 推挽输出
 
     while (true) {
-        sfr.clrBit(P1, 1); // P1.1 = 0，LED 亮
+        m.bitClr(P1, 1); // P1.1 = 0，LED 亮
         delay500ms();
-        sfr.setBit(P1, 1); // P1.1 = 1，LED 灭
+        m.bitSet(P1, 1); // P1.1 = 1，LED 灭
         delay500ms();
     }
 }

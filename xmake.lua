@@ -502,7 +502,10 @@ target("zigled")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. led_asm, led_zig})
+        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "-Mroot=" .. led_zig,
+                       "-Mmcs=" .. path.join(projdir, "port/mcs251.zig"),
+                       "-femit-bin=" .. led_asm})
 
         -- [2/5] 修局部标签重名（tools/fix_mcs_labels.py）
         local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
@@ -580,7 +583,10 @@ target("zigasm")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. led_asm, led_zig})
+        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "-Mroot=" .. led_zig,
+                       "-Mmcs=" .. path.join(projdir, "port/mcs251.zig"),
+                       "-femit-bin=" .. led_asm})
 
         -- [2/5] 修局部标签重名
         local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
@@ -656,7 +662,10 @@ target("zigirq")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. isr_asm, isr_zig})
+        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "-Mroot=" .. isr_zig,
+                       "-Mmcs=" .. path.join(projdir, "port/mcs251.zig"),
+                       "-femit-bin=" .. isr_asm})
 
         local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
         if os.isfile(fixer) then
