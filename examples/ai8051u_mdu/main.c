@@ -108,5 +108,25 @@ void main(void)
         uart_puts("\r\n");
     }
 
-    while (1) { delay_ms(1000); }
+    /* 主循环心跳：每 500ms 翻 P1.1（指示灯）+ 打印 `HB n ok`，
+     * 并用运行期值再跑一遍 MDU 校验 —— 跑飞/卡死时心跳会停。 */
+    {
+        unsigned int hb = 0;
+        volatile unsigned long hv = 0x0000FFFFUL;
+        while (1)
+        {
+            unsigned long q, r, back;
+            P1 ^= 0x02;
+            hv += 0x00010001UL;
+            q = mdu_div32u(hv, 0x00000003UL);
+            r = mdu_mod32u(hv, 0x00000003UL);
+            back = mdu_mul32(q, 0x00000003UL) + r;
+            uart_puts("HB ");
+            put_hex8((unsigned char)(hb >> 8));
+            put_hex8((unsigned char)hb);
+            uart_puts(back == hv ? " ok\r\n" : " FAIL\r\n");
+            hb++;
+            delay_ms(500);
+        }
+    }
 }
