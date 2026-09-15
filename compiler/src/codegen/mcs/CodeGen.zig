@@ -287,21 +287,19 @@ const Gen = struct {
 
     fn locOf(gen: *Gen, ref: Air.Inst.Ref) codegen.CodeGenError!Loc {
         if (ref.toInterned()) |ip_index| {
-            // 编译期指针（`&全局数组` / `@ptrFromInt` 固定地址）：物化为帧内 3 字节地址，
-            // 使其能存入指针变量、做运行期下标等（mcs251）。
-            if (gen.arch == .mcs251) {
-                if (try gen.globalSymbolOf(ref)) |g| {
-                    if (g.off == 0) {
-                        const tmp = gen.allocFrame(gen.ptrBytes());
-                        try gen.materializeConstAddr(g.name, 0, tmp);
-                        return .{ .frame = tmp };
-                    }
-                }
-                if (gen.fixedAddrOf(ref)) |a| {
+            // 编译期指针（`&全局数组` / `@ptrFromInt` 固定地址）：物化为帧内 `ptrBytes()` 字节
+            // 地址（mcs251 3B / mcs51 2B），使其能存入指针变量、做运行期下标等。
+            if (try gen.globalSymbolOf(ref)) |g| {
+                if (g.off == 0) {
                     const tmp = gen.allocFrame(gen.ptrBytes());
-                    try gen.materializeConstAddr(null, a, tmp);
+                    try gen.materializeConstAddr(g.name, 0, tmp);
                     return .{ .frame = tmp };
                 }
+            }
+            if (gen.fixedAddrOf(ref)) |a| {
+                const tmp = gen.allocFrame(gen.ptrBytes());
+                try gen.materializeConstAddr(null, a, tmp);
+                return .{ .frame = tmp };
             }
             const bits = gen.getConstBits(ip_index) orelse
                 return gen.fail("mcs backend: unsupported constant operand", .{});
