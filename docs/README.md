@@ -28,6 +28,10 @@
 - [10-工程-ai8051u_blink](10-工程-ai8051u_blink.md) —— 完整 C + Zig 流水灯工程说明。
 - [11-示例-ai8051u_blink](11-示例-ai8051u_blink.md) —— 最小 C + Zig 示例说明（该示例已并入
   `examples/ai8051u_blink`）。
+- [13-8位与32位模式与Flash布局](13-8位与32位模式与Flash布局.md) —— AI8051U 单核双模、
+  共用同一 64K Flash/复位入口，两种固件不能并存（含 8 位固件构建方法）。
+- [14-USB-CDC移植笔记](14-USB-CDC移植笔记.md) —— 把 STC 的 Keil C251 库（USB）移植到 SDCC
+  mcs251 的完整方法，含两个 SDCC 专属坑（IVT 只在 main 模块、ISR 共享变量需 volatile）。
 
 源码位置：`../examples/ai8051u_blink/`、`../examples/ai8051u_ptrtest/`
 （3 字节指针互操作见 [07](07-调试笔记-ptr_rt自举崩溃定位.md)）。

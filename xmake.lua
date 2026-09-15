@@ -998,3 +998,129 @@ target("ccobs")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
+
+-- usbcdc：把 STC 官方 USB-CDC（Keil C251）源码经 keil2sdcc 移植后，用 SDCC mcs251 编译链接。
+-- 源码在 examples/ai8051u_usb_cdc/src/（已翻译），USB SFR 来自 lib/include/ai8051u_sfr.h。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build usbcdc
+target("usbcdc")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("usbcdc 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u_usb_cdc")
+        local srcdir = path.join(scriptdir, "src")
+        local incdir = path.join(projdir, "lib/include")
+        local sdcc = get_config("sdcc251")
+        if not os.isfile(sdcc) then
+            raise("找不到工具：" .. sdcc .. "（用 --sdcc251 覆盖路径）")
+        end
+
+        -- 单编译单元（含 main + 全部 ISR），SDCC 才会生成完整中断向量表；见 src/usb_cdc_all.c
+        local srcs = {"usb_cdc_all"}
+        local rels = {}
+        local cflags = {"-mmcs251", "--model-large",
+                        "-I", incdir, "-I", srcdir}
+
+        for _, s in ipairs(srcs) do
+            local c = path.join(srcdir, s .. ".c")
+            local r = path.join(srcdir, s .. ".rel")
+            print("[1/2] C -> rel   : " .. (s .. ".c"))
+            os.vrunv(sdcc, table.join(cflags, {"-c", c, "-o", r}))
+            table.insert(rels, r)
+        end
+
+        local ihx = path.join(scriptdir, "usb_cdc.ihx")
+        print("[2/2] link -> ihx: usb_cdc.ihx")
+        os.vrunv(sdcc, table.join({"-mmcs251", "--model-large",
+                                   "--code-loc", "0xff0000"}, rels, {"-o", ihx}))
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local srcdir = path.join(os.projectdir(), "examples/ai8051u_usb_cdc/src")
+        for _, s in ipairs({"main", "uart", "usb", "usb_desc", "usb_req_std",
+                            "usb_req_class", "usb_req_vendor", "util"}) do
+            os.tryrm(path.join(srcdir, s .. ".rel"))
+            os.tryrm(path.join(srcdir, s .. ".lst"))
+            os.tryrm(path.join(srcdir, s .. ".rst"))
+            os.tryrm(path.join(srcdir, s .. ".sym"))
+            os.tryrm(path.join(srcdir, s .. ".asm"))
+        end
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_usb_cdc")
+        os.tryrm(path.join(scriptdir, "usb_cdc.ihx"))
+        os.tryrm(path.join(scriptdir, "usb_cdc.lk"))
+        os.tryrm(path.join(scriptdir, "usb_cdc.map"))
+        os.tryrm(path.join(scriptdir, "usb_cdc.mem"))
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 usbcdc")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- usbhid：STC 官方 USB-HID（Keil C251）经 keil2sdcc 移植到 SDCC mcs251。
+-- 本板无按键，已改为**持续上报**（主循环周期发 64 字节 EP1 IN 报告）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build usbhid
+target("usbhid")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("usbhid 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u_usb_hid")
+        local srcdir = path.join(scriptdir, "src")
+        local incdir = path.join(projdir, "lib/include")
+        local sdcc = get_config("sdcc251")
+        if not os.isfile(sdcc) then
+            raise("找不到工具：" .. sdcc .. "（用 --sdcc251 覆盖路径）")
+        end
+
+        -- 单编译单元（main + 全部 ISR），SDCC 才会生成完整 IVT；见 docs/14
+        local c   = path.join(srcdir, "usb_hid_all.c")
+        local rel = path.join(srcdir, "usb_hid_all.rel")
+        local ihx = path.join(scriptdir, "usb_hid.ihx")
+
+        print("[1/2] C -> rel   : usb_hid_all.c")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "-I", incdir, "-I", srcdir,
+                        "-c", c, "-o", rel})
+
+        print("[2/2] link -> ihx: usb_hid.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local srcdir = path.join(os.projectdir(), "examples/ai8051u_usb_hid/src")
+        for _, s in ipairs({"usb_hid_all"}) do
+            for _, ext in ipairs({".rel", ".lst", ".rst", ".sym", ".asm"}) do
+                os.tryrm(path.join(srcdir, s .. ext))
+            end
+        end
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_usb_hid")
+        for _, n in ipairs({"usb_hid.ihx", "usb_hid.lk", "usb_hid.map", "usb_hid.mem"}) do
+            os.tryrm(path.join(scriptdir, n))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 usbhid")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)

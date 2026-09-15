@@ -160,12 +160,17 @@ class CodeTranslator:
         return f"({d['base']} & 0x{d['mask']:02X})"
 
     def translate(self, code: str) -> str:
+        # STC 头：兼容 "ai8051u.h"、"../comm/AI8051U.H"、<intrins.h> 等写法。
         code = re.sub(
-            r'(?i)(#\s*include\s*")ai8051u\.h(")',
-            r"\g<1>ai8051u_sfr.h\g<2>",
+            r'(?i)#\s*include\s*["<][^">]*AI8051U\.H[">]',
+            '#include "ai8051u_sfr.h"',
             code,
         )
-        code = re.sub(r'(#\s*include\s*")intrins\.h(")', r"\g<1>mcs_intrins.h\g<2>", code)
+        code = re.sub(
+            r'(?i)#\s*include\s*[<"]intrins\.h[>"]',
+            '#include "mcs_intrins.h"',
+            code,
+        )
         # 中断函数：void f(void) interrupt N  ->  void f(void) __interrupt(N)
         code = re.sub(r"(\)\s*)interrupt\s+([A-Za-z_]\w*|\d+)", r"\g<1>__interrupt(\g<2>)", code)
         code = re.sub(r"\bsfr\s+(\w+)\s*=\s*(0x[0-9A-Fa-f]+)\s*;", r"__sfr __at(\g<2>) \g<1>;", code)

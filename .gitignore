@@ -84,6 +84,13 @@
 # cobs 主机测试产物
 /lib/cobs/*.exe
 
+# 由源码打包的 SDCC 库（生成物）
+/examples/ai8051u_usb_cdc/*.lib
+
+# USB 示例：SDCC 由 .c 生成的汇编（.c 是源）
+/examples/ai8051u_usb_cdc/src/*.asm
+/examples/ai8051u_usb_hid/src/*.asm
+
 # Zig / xmake 构建缓存
 .zig-cache/
 *.zig-cache*/
