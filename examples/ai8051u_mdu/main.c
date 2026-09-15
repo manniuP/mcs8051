@@ -77,5 +77,30 @@ void main(void)
     uart_puts(" sq="); put_hex32(mdu_mul32(va, vb));
     uart_puts("\r\n");
 
+    /* 有符号除法：与 C 软件参考（SDCC 运行库的 / 和 %）比对，运行期 volatile 输入 */
+    {
+        unsigned int k, sp = 0, sf = 0;
+        volatile long sa, sb;
+        for (k = 0; k < 6; k++)
+        {
+            sa = (long)((k & 1) ? -0x10000000L : 0x10000000L) + (long)k * 12345L;
+            sb = (long)((k & 2) ? -3L : 3L);
+            {
+                long q = mdu_div32s(sa, sb);
+                long r = mdu_mod32s(sa, sb);
+                long rq = sa / sb;      /* C 软件参考 */
+                long rr = sa % sb;
+                uart_puts("s"); put_hex8((unsigned char)k);
+                uart_puts(" q="); put_hex32((unsigned long)q);
+                uart_puts(" r="); put_hex32((unsigned long)r);
+                if (q == rq && r == rr) { uart_puts(" PASS\r\n"); sp++; }
+                else                    { uart_puts(" FAIL\r\n"); sf++; }
+            }
+        }
+        uart_puts("signed pass=0"); uart_putc('0' + (unsigned char)sp);
+        uart_puts(" fail=0"); uart_putc('0' + (unsigned char)sf);
+        uart_puts("\r\n");
+    }
+
     while (1) { delay_ms(1000); }
 }

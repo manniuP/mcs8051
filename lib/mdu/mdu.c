@@ -121,3 +121,67 @@ unsigned long mdu_mod32u(unsigned long a, unsigned long b)
     mdu_div_core(a, b);
     return mdu_get(mdu_s + 4);
 }
+
+/* 有符号除法核心（指令码 0x06）：商 -> mdu_s[0..3]，余数 -> mdu_s[4..7]（符号随被除数）。 */
+static void mdu_sdiv_core(long a, long b)
+{
+    unsigned long ua = (unsigned long)a;
+    unsigned long ub = (unsigned long)b;
+
+    mdu_s[0] = ua >> 24;
+    mdu_s[1] = ua >> 16;
+    mdu_s[2] = ua >> 8;
+    mdu_s[3] = ua;
+    mdu_s[4] = ub >> 24;
+    mdu_s[5] = ub >> 16;
+    mdu_s[6] = ub >> 8;
+    mdu_s[7] = ub;
+
+    __asm
+        mov a,_mdu_s+0
+        mov r4,a
+        mov a,_mdu_s+1
+        mov r5,a
+        mov a,_mdu_s+2
+        mov r6,a
+        mov a,_mdu_s+3
+        mov r7,a
+        mov a,_mdu_s+4
+        mov r0,a
+        mov a,_mdu_s+5
+        mov r1,a
+        mov a,_mdu_s+6
+        mov r2,a
+        mov a,_mdu_s+7
+        mov r3,a
+        mov _DMAIR,#0x06
+        mov a,r4
+        mov _mdu_s+0,a
+        mov a,r5
+        mov _mdu_s+1,a
+        mov a,r6
+        mov _mdu_s+2,a
+        mov a,r7
+        mov _mdu_s+3,a
+        mov a,r0
+        mov _mdu_s+4,a
+        mov a,r1
+        mov _mdu_s+5,a
+        mov a,r2
+        mov _mdu_s+6,a
+        mov a,r3
+        mov _mdu_s+7,a
+    __endasm;
+}
+
+long mdu_div32s(long a, long b)
+{
+    mdu_sdiv_core(a, b);
+    return (long)mdu_get(mdu_s);
+}
+
+long mdu_mod32s(long a, long b)
+{
+    mdu_sdiv_core(a, b);
+    return (long)mdu_get(mdu_s + 4);
+}

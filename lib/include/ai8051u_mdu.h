@@ -32,4 +32,10 @@ unsigned long mdu_div32u(unsigned long a, unsigned long b);
 /* 32 位无符号取余：返回 a%b（除零时余数为被除数，规范见手册）。 */
 unsigned long mdu_mod32u(unsigned long a, unsigned long b);
 
+/* 32 位有符号除法：返回商 a/b（除零 -> 0xFFFFFFFF）。指令码 0x06。 */
+long mdu_div32s(long a, long b);
+
+/* 32 位有符号取余：返回余数 a%b（符号随被除数，C 语义）。 */
+long mdu_mod32s(long a, long b);
+
 #endif /* AI8051U_MDU_H */
