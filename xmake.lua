@@ -122,7 +122,13 @@ target("blink")
 
         -- [4/4] link -> .ihx
         print(("[4/4] link -> ihx : %s"):format(path.filename(ihx)))
-        os.vrunv(sdcc, {model_opt, "--model-large", main_rel, delay_rel, led_rel, "-o", ihx})
+        local link_args = table.join({model_opt, "--model-large"}, {main_rel, delay_rel, led_rel, "-o", ihx})
+        if arch == "mcs251" then
+            -- AI8051U 程序存储器在 FF:0000-FF:FFFF，复位 PC=FF:0000
+            table.insert(link_args, #link_args - 1, "--code-loc")
+            table.insert(link_args, #link_args - 1, "0xff0000")
+        end
+        os.vrunv(sdcc, link_args)
 
         -- 把产物登记到 target，让 xmake 知道有文件输出了
         target:set("targetfile", ihx)
@@ -204,8 +210,10 @@ target("ptrtest")
         os.vrunv(sdas, {"-plosgffw", zig_rel, zig_asm})
 
         -- [4/4] link -> .ihx（sdcc 自动补启动与运行库）
+        -- AI8051U 程序存储器在 FF:0000-FF:FFFF，复位 PC=FF:0000，故代码必须链到 0xff0000
         print("[4/4] link -> ihx: ptrtest.ihx")
-        os.vrunv(sdcc, {"-mmcs251", "--model-large", main_rel, zig_rel, "-o", ihx})
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        main_rel, zig_rel, "-o", ihx})
 
         target:set("targetfile", ihx)
         print("OK -> " .. ihx)
