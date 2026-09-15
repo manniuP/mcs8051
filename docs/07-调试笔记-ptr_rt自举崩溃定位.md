@@ -468,3 +468,250 @@ OK -> ...\ptrtest.ihx        (3903 字节)
 
 > 仍待硬件/模拟器实跑确认（本机 SDCC 包不含 ucsim-251）。但生成的是一条完整的
 > 间接寻址路径，且编码、ABI、栈平衡均已逐条核对。
+
+## 软件仿真验证尝试：ucsim 的 MCS-251 是空壳（2026-09-15）
+
+在没有开发板的情况下，尝试用 `sdcc-c251/sim/ucsim` 源码在 WSL 里构建 MCS-251 模拟器，
+软件运行 `ptrtest.ihx`。**结论：ucsim 不支持 MCS-251，此路不通。**
+
+### 构建过程（可复现，供以后参考）
+
+- 环境：WSL Debian，`gcc/g++ 14.2.0` + `make/autoconf` 齐备。
+- `sdcc-c251/sim/ucsim` 的 `configure` 与 `*.in/*.mk/*.ac` 均为 CRLF，直接跑会
+  `$'\r': command not found`。需先 `sed -i 's/\r$//'` 归一化（用 WSL 原生路径更快）。
+- `./configure && make -j` 成功，产出统一二进制
+  `src/apps/ucsim.src/ucsim`（3.5 MB，不是 `s51`）。
+- CPU 类型名见 `src/core/utils.src/globals.cc:382`：`251` / `MCS251`。
+
+### 为什么不可用
+
+- `ucsim -t 251 ptrtest.ihx` 能加载（PC=0），但：
+  - `info memory` 只有 256B `variables` + 1MB `nas`，**没有 SFR/XDATA 空间**；
+  - `info registers` → `No registers`；`get sfr 0x90` → `No SFR`；
+  - `dump`（代码区）每个字节都报 `uc::disass() unimplemented`；
+  - `step 1` 直接**卡死**（超时），`step`/`dump xdata` 等内存类型名全部不识别。
+- 根因：`sim/ucsim/src/sims/s51.src/umcs251.cc`（仅 44 行）里
+  `cl_umcs251` 是**空构造**，只继承 8 位核 `cl_uc89c51r`，**未实现任何 251 指令、
+  DR28/24 位寻址、SFR、反汇编**。全仓库 `grep dr28` 无命中。
+- 要真正仿真 251，需自行实现整个 MCS-251 核（大工程），当前不划算。
+
+### 用途
+
+- 该 WSL 构建（`~/ucsim251`）只对 **8051/mcs51** 目标有效，可跑 8051 的 `.ihx`，
+  但**不能**验证 251 目标。M3 的真机/仿真确认仍**依赖开发板**。
+
+## 局部标签冲突：构建层自动修复（2026-09-15）
+
+### 问题（复现）
+
+> 见前文“局部标签按函数重新编号”。构造 `labeltest.zig`（同文件两个含 `if` 的函数
+> `f1`/`f2`）→ 两个函数各自产出 `L1..L6` → `sdas251` 直接报
+> `<m> multiple definitions` + `<p> phase error`（exit 2）。
+
+### 根因
+
+- `CodeGen.zig:131` 的 `Gen.next_label` 每个函数从 0 开始，`generate()` 里新建 `Gen`；
+- `Mir.zig:108` / `encode.zig:170` 把标签**原样**输出为文件级 `L<d>:` / `L<d>`，
+  没有函数前缀 → 同名。
+
+### 解法：不改编译器，改构建
+
+新增 `tools/fix_mcs_labels.py`：扫描 `.asm`，按函数边界
+（`.globl <sym>` 或行首非 `L<digits>` 的全局标签）切换命名空间，把该函数内的
+`L<n>` 全部改成 `L_<func>_<n>`（注释部分不动）。
+
+```powershell
+python tools/fix_mcs_labels.py <file.asm>          # 就地改写
+python tools/fix_mcs_labels.py --check <file.asm>  # 只报告跨函数重名
+```
+
+- 已验证：`labeltest.asm` 修复后 `sdas251` 由 exit 2 → **exit 0**。
+- 已接入 `xmake.lua`（blink / ptrtest 的 `[2.5/4]` 步，新增 `--python` 选项）与
+  `driver/build.ps1`（`[1.5/4]` 步，新增 `-Python`）。
+- 接入后重跑 `xmake build ptrtest`：2 个函数、0 处重命名，产物 `ptrtest.ihx` 3903B 不变。
+
+### 意义
+
+- 一个 `.zig` 里可以有**多个含分支的函数**，不再需要“一个 .asm 一个分支函数”。
+- 这是**构建层绕过**（编译器源码缺陷仍在）；彻底修法仍是给 `Gen.next_label`
+  加函数前缀并重编 `zig.exe`（受自举崩溃阻塞，见前文）。
+
+## 软件仿真跑通 8 位（mcs51）：ucsim + AT89C52 自检测试（2026-09-15）
+
+mcs251 仿真不可用（ucsim 的 251 核是空壳，见上节），但 **8051（mcs51）核真实可用**。
+据此把「C + Zig 混编 → 运行」整条链在**软件仿真**里闭环。
+
+### ucsim 的正确调用方式（关键）
+
+- WSL 构建产物（见上节）：`~/ucsim251/src/sims/s51.src/ucsim_51`（专用 51 模拟器，
+  不是统一二进制 `src/apps/ucsim.src/ucsim`）。
+- 必须加 `-S in=/dev/null,out=-`，并把命令文件喂给 **stdin**（不是 `-C`）：
+
+  ```bash
+  ucsim_51 -t 32 -S in=/dev/null,out=- <prog.ihx> < cmds.txt
+  ```
+
+  否则：串口接口抢占 stdin，命令控制台在 `step` 上**永久阻塞**（`step 1` 都会卡死）。
+  参考 `sdcc-c251/support/regression/ports/mcs51-common/spec.mk`
+  （`EMU_PORT_FLAG=-t32`、`EMU_FLAGS=-S in=$(DEV_NULL),out=-`）与顶层
+  `support/regression/Makefile.in`（`EMU_INPUT = < uCsim.cmd`）。
+
+- 常用命令：`step <n> [vclk]`、`state`、`get sfr <addr>`、`dump xram/iram/sfr/bits/rom`
+  （内存类型名见 `info memory`）；回归风格还会先
+  `set error unknown_code off`、`set opt selfjump_stop 0`。
+
+### 新增自检测试工程 `projects/at89c52_sim/`
+
+- **只用标准 8051 SFR**（AT89C52 风格，不依赖 STC 专有寄存器），ucsim 可直接执行。
+- C（`main.c`）：连续调用 Zig `led_next(u8)` 八次，逐项比对期望序列；
+  结果写 XRAM —— `0x8000=status`（`0xAA` 通过 / `0x55` 失败）、
+  `0x8001=failcode`、`0x8002..=seq[8]`。
+- Zig（`led.zig`）：纯标量，无指针/切片，避开后端已知限制。
+- 构建：`xmake build --mcs_arch=mcs51 simtest`（xmake 目标 `simtest`）。
+- 仿真结果（`dump xram 0x8000 0x800f`）：
+
+  ```
+  0x8000   aa 00 02 04 08 10 20 40 80 01 ...
+  ```
+
+  → `status=0xAA`，`failcode=0`，序列与期望完全一致，**通过**。
+
+### 踩坑：`__xdata __at(0x0000)` 与 XSEG 重叠
+
+最初把结果变量放在 `__at(0x0000/1/2)`，仿真得到 `status=0x55`、`failcode=1`，
+看似 Zig 函数错。用最小隔离测试（只调 `led_next(0x01)`/`led_next(0x40)` 存 xdata）
+证明返回 `0x02`/`0x80` 正确；真因是 **SDCC 把 XSEG 也放在 0x0001**，
+与 `__at` 绝对变量重叠、互相踩踏。把结果变量移到高位 `0x8000` 后即通过。
+
+### 结论
+
+- **8 位（mcs51）整条链已闭环**：Zig→asm→sdas8051→sdcc 链接→`.ihx`→ucsim 运行。
+  可作为 C↔Zig 互操作与后端代码生成的**回归验证手段**（无需开发板）。
+- blink 工程（STC AI8051U 8 位兼容模式）同样能在 ucsim 里跑：P1 依次
+  `0x7E→0x7D→0x7B→0x77`，即流水灯逐位点亮。
+- **251 目标仍只能靠真实硬件**（ucsim 251 核缺失）。
+
+## 自举问题解决：改用系统 zig 0.16.0 重建（2026-09-15）
+
+前面的“放弃自举”结论**作废**。根因确认：`tools/zig-bootstrap/zig.exe`（55MB）
+是个**坏 bootstrap**——它把 stage2 `zig.exe` miscompile 成一编译就崩
+（x86_64 主机路径栈溢出 / `@intCast`）。用**官方 0.16.0** 当 bootstrap 就正常。
+
+### 重建方法（系统 zig 0.16.0，winget 装的，`zig` 已在 PATH）
+
+```powershell
+cd <workspace>\mcs251\zig
+zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\lib
+# 产物：<workspace>\mcs251\zig\zig-out\bin\zig.exe（0.16.1）
+```
+
+- **必须** `--zig-lib-dir` 指向源码树自带的 `zig/lib`（含 mcs51/mcs251 目标定义）；
+  否则用系统 zig 自己的 lib 会报 `no field named 'mcs51' in enum Target.Cpu.Arch`。
+- `-Dno-lib` 跳过 lib 拷贝，省时；运行新编译器时仍设
+  `ZIG_LIB_DIR=<repo>\zig\lib`。
+- 首次全量编译若干分钟；增量/命中缓存很快。
+
+### 验证
+
+- `zig-out\bin\zig.exe version` → `0.16.1`。
+- `build-obj -target x86_64-windows`（此前**必崩**）→ **exit 0**。
+- `-target mcs51-freestanding` / `mcs251-freestanding` → 正常出 asm。
+- 用它重建 `projects/at89c52_sim` 的 `simtest.ihx`，ucsim 里
+  `0x8000=aa`、序列正确 → 产物可信。
+
+### 意义
+
+- **解锁所有后端源码级改动**：mcs51 指针/全局/多参数、标签前缀、peephole 优化等，
+  都能改 `zig/src/codegen/mcs/` 后重建验证，不再受“不能重编”限制。
+- xmake 的 `--zig` 默认已改为**优先** `zig/zig-out/bin/zig.exe`，退回旧 bootstrap。
+
+## 验证：stage2 可用、ptr_rt 生效、stage3 仍崩（2026-09-15）
+
+### 通过项
+
+- 系统 zig 0.16.0 构建的 stage2（`zig-out/bin/zig.exe`，23.2 MB，报 0.16.1）：
+  - `build-obj -target x86_64-windows`（旧系统**必崩**）→ exit 0；
+  - mcs51 / mcs251 编译正常；
+  - 用它重建 `simtest.ihx` → ucsim `0x8000=aa`、序列正确。
+- **`.ptr_rt` 修复确实生效**：mcs251 下**直接用 `buf[i]`**（不再用 workaround）
+  编 `fill`/`sum`，`fill` 生成 `mov @dr28,r3`（写 buffer），而不是
+  `mov @spx-0xN,a`（写自己的栈帧）。→ 旧的
+  `(@as(*u8, @ptrCast(buf + i))).*` **不再必需**。
+- mcs251 `ptrtest` 全流程（zig→sdas251→sdcc→ihx）OK。
+
+### 未通过项（已知，不阻塞目标）
+
+- **自举 stage3 崩**：用 stage2 再编一个编译器（stage3，947 MB）→ 任何输入都
+  `0xC0000094`（整数除零）。与本文前段的自举崩溃同源，是**源码里遗留的 codegen
+  缺陷**，触发于“编译编译器自身”这种复杂输入；普通用户代码（含 mcs51/mcs251
+  目标）不触发。
+- **不影响 mcs51/mcs251 目标产物**（我们的用途）。需重编编译器时，用
+  **系统 zig 0.16.0**（而非 stage2 自举）。
+- stage2(23 MB) 与 stage3(947 MB) 体积差约 40×，说明二者构建配置不同：
+  stage3 走**自托管后端、未启用 LLVM**，该后端在此源码版本上不可靠。
+
+### 结论
+
+- 日常流程：**改后端 → 用系统 zig 重建 stage2 → 用 stage2 编目标代码 → ucsim 验证**。
+- 不要依赖 stage2 自举（stage3）。
+
+## 构建模式对比与迭代提速（2026-09-15）
+
+| 模式 | 主机 x86_64 编译 | mcs51/mcs251 | 全量/增量重建耗时 | 体积 |
+| --- | --- | --- | --- | --- |
+| ReleaseFast | ✅ | ✅ | **~498 s**（改一行也重编整个 `zig` 模块） | 23 MB |
+| Debug | ❌（安全 panic，exit -1） | ✅ | **~104 s** | 55.7 MB |
+
+- **迭代后端时用 Debug**：只关心 mcs51/mcs251 产物，Debug 快约 5×。
+  命令加 `-Doptimize=Debug` + 独立 `--cache-dir`。
+- 需主机编译（如自举/发布）时才用 ReleaseFast。
+- 旧 `tools/zig-bootstrap/zig.exe` 的 **55 MB** 与 Debug 产物 **55.7 MB** 几乎一致
+  → 它很可能就是一个 Debug 构建，这也解释了它的主机崩溃症状。
+- **“把后端拎出来做运行库”不可行/不划算**：`src/codegen/mcs/` 吃的是 Zig **AIR**
+  （由 AstGen/Sema/Zcu 产生），无法脱离前端独立运行；要独立就得重写 Sema。
+  “运行库”是程序链接用的辅助库，与后端迭代速度无关。
+  真正影响迭代速度的是“改一行重编整个模块”，故用 Debug 构建是当前最有效的提速。
+
+## mcs51 指针（xdata）实现（2026-09-15）
+
+后端原本所有指针路径都是 MCS-251/DR28 专用，mcs51 会错发 251 指令。新增 mcs51 分支：
+
+- `derefRead` / `derefWrite`：mcs51 → `loadPtrToDptr`（低字节→DPL、高字节→DPH）
+  + `movx a,@dptr` / `movx @dptr,a` + 逐字节 `inc dptr`。
+- `emitElemPtr`（`+off`）与 `emitPtrAdd`（`buf + off`）：mcs51 → 复制 2 字节指针，
+  再用 DPTR 做 16 位加（`mov a,dpl; add a,#lo; mov dpl,a; mov a,dph; addc a,#hi; mov dph,a`）。
+- 指针表示：mcs51 下 `[*]T` = **2 字节 xdata 指针**，帧内小端（`+0`=低，`+1`=高），
+  与 SDCC 的 `__xdata T *` 一致。
+
+验证（ucsim，AT89C52 风格自检）：
+
+- `projects/at89c52_sim`：C 传 `__xdata u8 *`，Zig `sum4` 读 4 字节求和；
+  `0x8000=aa`、`failcode=0`。
+- 三种写法均 `dr28=0` 且 `sdas8051` 通过：`buf[i]`、`(@as(*u8,@ptrCast(buf+i))).*`、`buf+1`。
+- fill/sum（mcs51 版 ptrtest）：`fill` 返回 5、`sum` 返回 20（`0x14`），`status=0xaa`。
+
+改动：`zig/src/codegen/mcs/CodeGen.zig`（约 +90 行）。重编：Debug ~100s / ReleaseFast ~11min。
+
+仍缺：多参数、全局变量、切片、`@ptrFromInt(addr).*`（单元素指针）——见 [06 §1.1](06-常见问题与限制.md)。
+
+## mcs51 多参数（C-栈约定）实现（2026-09-15）
+
+采用 **SDCC `--stack-auto` 约定**作为共享 ABI（用户选定「C-栈」）：
+
+- 参数0 → DPL/DPH/B/A；参数 2..N 由 **caller 逆序压栈**；callee 在入口读取；
+  返回在 DPL/DPH/B/A；caller 清理（`dec sp`）。
+- Zig 后端 caller 侧（`emitCall`）本就实现了逆序压栈 + 退栈；**callee 侧
+  （`emitArg`）的 SP 偏移算错**：原 `off = 2 + Σsize(2..k)`（含自身），
+  修正为 `off = 2 + Σsize(2..k-1)`（`preallocArg` mcs51 分支）。
+- 验证（ucsim）：
+  - `add3(1,2,3)=6`、`add4(1,2,3,4)=10`；
+  - **Zig 回调 C**：`viac(1) → cadd3(1,2,3) = 123`；
+  - `projects/at89c52_sim`（标量 + 指针 + 多参数）`status=0xaa`。
+- C 侧必须 `--stack-auto`（`xmake` 的 simtest 已加）。**未改 SDCC 源码**——
+  `--stack-auto` 是现成开关。
+- 预留的 SDCC 分叉：`<workspace>\sdcc-c251-abi`（原 `sdcc-c251` 保持原样）。
+  若要把 stack-auto 设为 mcs251/mcs51 默认（免开关），在
+  `src/SDCCmem.c:allocParms` 的判定或默认选项处改，再用 WSL 重编 SDCC。
+
+仍缺：**全局变量**（`CodeGen` 的 `indirect memory access` + `src/link/Asx.zig:updateNav`
+只打 TODO）、切片、`@ptrFromInt(addr).*` 单元素指针。
