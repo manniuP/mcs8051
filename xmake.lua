@@ -621,3 +621,75 @@ target("zigasm")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
+
+-- zigirq：纯 Zig 中断演示（Timer0 中断里翻转 P1.1）。向量表在 crt0.asm。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigirq
+target("zigirq")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigirq 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "projects/ai8051u_zig_irq")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool)
+            end
+        end
+
+        local isr_zig  = path.join(scriptdir, "isr.zig")
+        local isr_asm  = path.join(scriptdir, "isr.asm")
+        local isr_rel  = path.join(scriptdir, "isr.rel")
+        local crt0_rel = path.join(scriptdir, "crt0.rel")
+        local ihx      = path.join(scriptdir, "irq.ihx")
+
+        print("[1/5] Zig -> asm  : isr.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "zig/lib"))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. isr_asm, isr_zig})
+
+        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
+        if os.isfile(fixer) then
+            os.vrunv(get_config("python"), {fixer, isr_asm})
+        end
+
+        print("[3/5] asm -> rel : isr.asm")
+        os.vrunv(sdas, {"-plosgffw", isr_rel, isr_asm})
+
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : irq.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        crt0_rel, isr_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "projects/ai8051u_zig_irq")
+        for _, name in ipairs({"isr.asm", "isr.rel", "isr.lst", "isr.sym", "isr.rst",
+                              "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
+                              "irq.lk", "irq.ihx", "irq.map", "irq.mem"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 zigirq")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)

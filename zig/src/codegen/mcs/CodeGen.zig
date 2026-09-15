@@ -1093,14 +1093,19 @@ const Gen = struct {
         const src = ua.source;
         if (src.len == 0) return;
         // ASxxxx 中第 1 列的 token 会被当作标签；逐行加一个制表符缩进再原样输出。
+        // 例外：以 `:` 结尾的行当作标签，去缩进放第 1 列。
         var lines = std.mem.splitScalar(u8, src, '\n');
         while (lines.next()) |line| {
             var l = line;
             if (l.len > 0 and l[l.len - 1] == '\r') l = l[0 .. l.len - 1];
             if (l.len == 0) continue;
-            const indented = try std.fmt.allocPrint(gen.gpa, "\t{s}", .{l});
-            try gen.mir.addOwned(gen.gpa, indented);
-            try gen.mir.addRaw(gen.gpa, indented);
+            const text = if (l[l.len - 1] == ':') blk: {
+                var s: usize = 0;
+                while (s < l.len and (l[s] == ' ' or l[s] == '\t')) s += 1;
+                break :blk try gen.gpa.dupe(u8, l[s..]);
+            } else try std.fmt.allocPrint(gen.gpa, "\t{s}", .{l});
+            try gen.mir.addOwned(gen.gpa, text);
+            try gen.mir.addRaw(gen.gpa, text);
         }
     }
 
@@ -2213,10 +2218,10 @@ const Gen = struct {
         return @truncate(addr);
     }
 
-    /// 固定地址是否落在 8 位直址区（SFR 0x80–0xFF / 低 RAM 0x00–0x7F）。
+    /// 固定地址是否落在 8 位直址区（`data`/低 RAM 0x00–0x7F 与 SFR 0x80–0xFF）。
     /// 直址用 `mov a,dir8` / `mov dir8,a`，而非 MOVX 的 xdata。
     fn isDirectAddr(addr: u32, size: u32) bool {
-        return size >= 1 and addr <= 0xFF and addr + size - 1 <= 0xFF and addr >= 0x80;
+        return size >= 1 and addr <= 0xFF and addr + size - 1 <= 0xFF;
     }
 
     /// 读固定 xdata 地址 `addr` 的 `size` 字节到帧槽 `dst_disp`。
