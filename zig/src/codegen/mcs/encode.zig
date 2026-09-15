@@ -189,6 +189,8 @@ pub const Operand = union(enum) {
     dir24: Address,
     /// `#data` 立即数。
     imm: Immediate,
+    /// `#symbol` 立即数地址（如 `mov dptr,#_gv`）。
+    imm_symbol: Address,
     /// `@Ri`。
     at_ri: u1,
     /// `@DPTR`。
@@ -226,6 +228,10 @@ pub const Operand = union(enum) {
             .dir16 => |a| try a.format(w, 4),
             .dir24 => |a| try a.format(w, 6),
             .imm => |imm| try formatImmediate(w, imm),
+            .imm_symbol => |a| {
+                try w.writeByte('#');
+                try a.format(w, 6);
+            },
             .at_ri => |n| w.print("@r{d}", .{n}) catch return error.WriteFailed,
             .at_dptr => try w.writeAll("@dptr"),
             .at_a_dptr => try w.writeAll("@a+dptr"),

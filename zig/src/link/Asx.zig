@@ -13,6 +13,7 @@ const Allocator = std.mem.Allocator;
 const Path = std.Build.Cache.Path;
 
 const Zcu = @import("../Zcu.zig");
+const Type = @import("../Type.zig");
 const InternPool = @import("../InternPool.zig");
 const Compilation = @import("../Compilation.zig");
 const codegen = @import("../codegen.zig");
@@ -108,7 +109,8 @@ pub fn updateFunc(
     try asx.assembly.appendSlice(gpa, aw.written());
 }
 
-/// 数据符号（全局变量/常量）尚未实现。
+/// 数据符号（全局变量）：在 xdata 区（`XSEG`）分配 `size` 字节并导出符号。
+/// 注：目前只做零初始化（`.ds`），非零初值需经 XINIT/启动拷贝，暂未实现。
 pub fn updateNav(
     asx: *Asx,
     pt: Zcu.PerThread,
@@ -117,12 +119,26 @@ pub fn updateNav(
     const zcu = pt.zcu;
     const gpa = zcu.gpa;
     const ip = &zcu.intern_pool;
-    const name = ip.getNav(nav_index).fqn.toSlice(ip);
+    const nav = ip.getNav(nav_index);
+    const resolved = nav.resolved orelse return;
+    if (resolved.is_extern_decl) return; // extern 由 C 侧定义
+    if (resolved.value == .none) return;
+    const ty = Type.fromInterned(resolved.type);
+    if (!ty.hasRuntimeBits(zcu)) return; // 函数 / 零位类型
+    const size: u32 = @intCast(ty.abiSize(zcu));
+    if (size == 0) return;
 
-    // 明确标注尚未实现，避免生成静默错误的映像。
-    const text = try std.fmt.allocPrint(gpa, "\t; TODO mcs backend: data symbol '{s}' not implemented\n", .{name});
-    defer gpa.free(text);
-    try asx.assembly.appendSlice(gpa, text);
+    const name = try std.fmt.allocPrint(gpa, "_{s}", .{nav.name.toSlice(ip)});
+    defer gpa.free(name);
+
+    var aw: std.Io.Writer.Allocating = .init(gpa);
+    defer aw.deinit();
+    const w = &aw.writer;
+    w.writeAll("\t.area XSEG    (XDATA)\n") catch return error.OutOfMemory;
+    w.print("\t.globl {s}\n", .{name}) catch return error.OutOfMemory;
+    w.print("{s}:\n", .{name}) catch return error.OutOfMemory;
+    w.print("\t.ds {d}\n", .{size}) catch return error.OutOfMemory;
+    try asx.assembly.appendSlice(gpa, aw.written());
 }
 
 /// 导出别名重命名尚未实现。
