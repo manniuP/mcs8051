@@ -17,6 +17,7 @@ const ValueInterpretMode = enum { direct, by_name };
 
 pub fn build(b: *std.Build) !void {
     const only_c = b.option(bool, "only-c", "Translate the Zig compiler to C code, with only the C backend enabled") orelse false;
+    const mcs_only = b.option(bool, "mcs-only", "本 fork：只编入 MCS 后端（省去 x86_64 等后端分析，自举更快）") orelse false;
     const target = b.standardTargetOptions(.{
         .default_target = .{
             .ofmt = if (only_c) .c else null,
@@ -109,7 +110,7 @@ pub fn build(b: *std.Build) !void {
     exe_options.addOption(bool, "llvm_has_arc", llvm_has_arc);
     exe_options.addOption(bool, "llvm_has_xtensa", llvm_has_xtensa);
     exe_options.addOption(bool, "debug_gpa", debug_gpa);
-    exe_options.addOption(DevEnv, "dev", if (only_c) .bootstrap else .full);
+    exe_options.addOption(DevEnv, "dev", if (mcs_only) .mcs else if (only_c) .bootstrap else .full);
     exe_options.addOption(IoMode, "io_mode", io_mode);
     exe_options.addOption(ValueInterpretMode, "value_interpret_mode", value_interpret_mode);
     exe_options.addOption([:0]const u8, "version", version);

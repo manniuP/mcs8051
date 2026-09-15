@@ -8,6 +8,9 @@ pub const Env = enum {
     /// zig2 features
     core,
 
+    /// 本 fork 专用：只编入 MCS 后端（省去 x86_64 等巨大后端的分析，自举更快）。
+    mcs,
+
     /// stage3 features
     full,
 
@@ -129,6 +132,24 @@ pub const Env = enum {
                 .network_listen,
                 .win32_resource,
                 => false,
+            },
+            .mcs => switch (feature) {
+                .build_obj_command,
+                .version_command,
+                .targets_command,
+                .env_command,
+                .help_command,
+                .ast_gen,
+                .sema,
+                .legalize,
+                .incremental,
+                .make_executable,
+                .make_writable,
+                .stdio_listen,
+                .mcs_backend,
+                .asx_linker,
+                => true,
+                else => false,
             },
             .c_source => switch (feature) {
                 .clang_command,

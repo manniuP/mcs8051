@@ -691,9 +691,9 @@ const Gen = struct {
             "mcs backend: unsupported pointer base",
             .{},
         );
-        // 仅支持 u8 元素数组（COBS 缓冲即此类）；多字节元素需先做下标缩放，暂缺。
-        if (elem_size != 1) return gen.fail(
-            "mcs backend: runtime index into a global array requires 1-byte elements",
+        // 元素大小 1..255 时在 emitAbsElemPtr 里用 `mul ab` 缩放（下标为多字节整数）。
+        if (elem_size == 0 or elem_size > 255) return gen.fail(
+            "mcs backend: runtime index element size must be 1..255 bytes",
             .{},
         );
         const idx_loc = try gen.locOf(idx_ref);
@@ -809,8 +809,8 @@ const Gen = struct {
         // 运行期下标 + 运行期指针基址（`.ptr_rt`，如 `[*]u8` 参数）：物化为
         // `addr = load(base) + idx`（仅 xdata、1 字节元素），留给 emitElemPtr 物化。
         if (base == .ptr_rt) {
-            if (elem_size != 1) return gen.fail(
-                "mcs backend: runtime index on a pointer requires 1-byte elements",
+            if (elem_size == 0 or elem_size > 255) return gen.fail(
+                "mcs backend: runtime index element size must be 1..255 bytes",
                 .{},
             );
             if (idx_size > gen.ptrBytes()) return gen.fail(
@@ -823,7 +823,7 @@ const Gen = struct {
                 .base_addr = base.ptr_rt.addr,
                 .run_idx = idx_frame,
                 .idx_size = idx_size,
-                .elem_size = 1,
+                .elem_size = elem_size,
             } };
             return;
         }
@@ -1090,9 +1090,10 @@ const Gen = struct {
             },
             .ptr_rt, .frame => {
                 if (bin.rhs.toInterned() == null) {
-                    // 运行期偏移 + 运行期指针：物化为 `addr = load(base) + idx`（xdata、u8 元素）。
-                    if (elem_size != 1) return gen.fail(
-                        "mcs backend: runtime pointer offset requires 1-byte elements",
+                    // 运行期偏移 + 运行期指针：物化为 `addr = load(base) + idx*elem_size`
+                    // （xdata；元素大小 1..255，缩放见 emitAbsElemPtr）。
+                    if (elem_size == 0 or elem_size > 255) return gen.fail(
+                        "mcs backend: runtime pointer offset element size must be 1..255 bytes",
                         .{},
                     );
                     const idx_loc = try gen.locOf(bin.rhs);
@@ -1116,7 +1117,7 @@ const Gen = struct {
                         .base_addr = base_addr,
                         .run_idx = idx_frame,
                         .idx_size = idx_size,
-                        .elem_size = 1,
+                        .elem_size = elem_size,
                     } };
                     return;
                 }
@@ -1905,7 +1906,59 @@ const Gen = struct {
 
     /// 物化 `.ptr_rt` 的绝对 xdata 地址 `base + idx*elem_size`（`pr.run_idx` 为下标帧槽）。
     /// 序列对齐 SDCC 的 mcs251 输出；`clr a` 不清 CY，故进位可跨字节传递。
+    /// `elem_size > 1` 时先做多字节缩放：逐字节 `mul ab`（下标字节 × 元素大小），
+    /// 进位留在 r7（`t_hi + carry` 必 ≤ 0xFF，8 位够用），结果先写进 `pr.addr`，
+    /// 再把基址叠加进去（避免额外占帧槽）。
     fn emitAbsElemPtr(gen: *Gen, pr: anytype) codegen.CodeGenError!void {
+        if (pr.elem_size != 1) {
+            if (pr.elem_size > 255) return gen.fail(
+                "mcs backend: scaled runtime index element size must be <= 255",
+                .{},
+            );
+            // 乘积 -> pr.addr（小端逻辑字节），r7 存进位。
+            try gen.addInst(.mov, &.{
+                .{ .reg = .{ .r = 7 } },
+                .{ .imm = .{ .value = 0, .bits = 8 } },
+            });
+            var m: u32 = 0;
+            while (m < 3) : (m += 1) {
+                if (m < pr.idx_size) {
+                    try gen.loadByteToA(.{ .frame = pr.run_idx.? }, m, pr.idx_size);
+                } else {
+                    try gen.addInst(.clr, &.{.{ .reg = .a }});
+                }
+                try gen.addInst(.mov, &.{
+                    .{ .reg = .b },
+                    .{ .imm = .{ .value = @intCast(pr.elem_size), .bits = 8 } },
+                });
+                try gen.addInst(.mul, &.{.{ .reg = .ab }}); // A=t_lo, B=t_hi
+                try gen.addInst(.add, &.{ .{ .reg = .a }, .{ .reg = .{ .r = 7 } } });
+                try gen.storeA(.{ .frame = pr.addr }, m, 3);
+                try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .b } });
+                try gen.addInst(.addc, &.{
+                    .{ .reg = .a },
+                    .{ .imm = .{ .value = 0, .bits = 8 } },
+                });
+                try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 7 } }, .{ .reg = .a } });
+            }
+            // 把基址叠加到 pr.addr（原地）。
+            var k2: u32 = 0;
+            while (k2 < 3) : (k2 += 1) {
+                try gen.loadByteToA(.{ .frame = pr.addr }, k2, 3);
+                const mnem2: encode.Mnemonic = if (k2 == 0) .add else .addc;
+                if (pr.base_addr != 0) {
+                    try gen.addInst(.mov, &.{
+                        .{ .reg = .{ .r = 7 } },
+                        gen.frameOperand(pr.base_addr + @as(i32, @intCast(2 - k2))),
+                    });
+                    try gen.addInst(mnem2, &.{ .{ .reg = .a }, .{ .reg = .{ .r = 7 } } });
+                } else {
+                    try gen.addInst(mnem2, &.{ .{ .reg = .a }, baseByteOperand(pr, k2) });
+                }
+                try gen.storeA(.{ .frame = pr.addr }, k2, 3);
+            }
+            return;
+        }
         var k: u32 = 0;
         while (k < 3) : (k += 1) {
             if (k < pr.idx_size) {

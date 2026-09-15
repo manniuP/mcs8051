@@ -82,8 +82,10 @@ pub fn legalizeFeatures(pt: Zcu.PerThread, nav_index: InternPool.Nav.Index) ?*co
         .stage2_sparc64,
         .stage2_spirv,
         => |backend| {
-            dev.check(devFeatureForBackend(backend));
-            return importBackend(backend).legalizeFeatures(target);
+            if (comptime dev.env.supports(devFeatureForBackend(backend))) {
+                dev.check(devFeatureForBackend(backend));
+                return importBackend(backend).legalizeFeatures(target);
+            } else unreachable;
         },
     }
 }
@@ -134,7 +136,11 @@ pub const AnyMir = union {
             .stage2_wasm,
             .stage2_c,
             .stage2_mcs,
-            => |backend_ct| @field(mir, tag(backend_ct)).deinit(gpa),
+            => |backend_ct| {
+                if (comptime dev.env.supports(devFeatureForBackend(backend_ct))) {
+                    @field(mir, tag(backend_ct)).deinit(gpa);
+                } else unreachable;
+            },
         }
     }
 };
@@ -165,10 +171,12 @@ pub fn generateFunction(
         .stage2_c,
         .stage2_mcs,
         => |backend| {
-            dev.check(devFeatureForBackend(backend));
-            const CodeGen = importBackend(backend);
-            const mir = try CodeGen.generate(lf, pt, src_loc, func_index, air, liveness);
-            return @unionInit(AnyMir, AnyMir.tag(backend), mir);
+            if (comptime dev.env.supports(devFeatureForBackend(backend))) {
+                dev.check(devFeatureForBackend(backend));
+                const CodeGen = importBackend(backend);
+                const mir = try CodeGen.generate(lf, pt, src_loc, func_index, air, liveness);
+                return @unionInit(AnyMir, AnyMir.tag(backend), mir);
+            } else unreachable;
         },
     }
 }
@@ -201,9 +209,11 @@ pub fn emitFunction(
         .stage2_x86_64,
         .stage2_mcs,
         => |backend| {
-            dev.check(devFeatureForBackend(backend));
-            const mir = &@field(any_mir, AnyMir.tag(backend));
-            return mir.emit(lf, pt, src_loc, func_index, atom_index, w, debug_output);
+            if (comptime dev.env.supports(devFeatureForBackend(backend))) {
+                dev.check(devFeatureForBackend(backend));
+                const mir = &@field(any_mir, AnyMir.tag(backend));
+                return mir.emit(lf, pt, src_loc, func_index, atom_index, w, debug_output);
+            } else unreachable;
         },
     }
 }
@@ -225,8 +235,10 @@ pub fn generateLazyFunction(
     switch (target_util.zigBackend(target, zcu.comp.config.use_llvm)) {
         else => unreachable,
         inline .stage2_riscv64, .stage2_x86_64, .stage2_mcs => |backend| {
-            dev.check(devFeatureForBackend(backend));
-            return importBackend(backend).generateLazy(lf, pt, src_loc, lazy_sym, atom_index, w, debug_output);
+            if (comptime dev.env.supports(devFeatureForBackend(backend))) {
+                dev.check(devFeatureForBackend(backend));
+                return importBackend(backend).generateLazy(lf, pt, src_loc, lazy_sym, atom_index, w, debug_output);
+            } else unreachable;
         },
     }
 }
