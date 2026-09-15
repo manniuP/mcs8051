@@ -464,6 +464,12 @@ const Gen = struct {
                 .switch_br => try gen.preallocSwitch(inst, false),
                 .loop_switch_br => try gen.preallocSwitch(inst, true),
                 .ptr_elem_ptr => try gen.preallocElemPtr(inst),
+                .struct_field_ptr => try gen.preallocStructFieldPtr(inst, null),
+                .struct_field_ptr_index_0 => try gen.preallocStructFieldPtr(inst, 0),
+                .struct_field_ptr_index_1 => try gen.preallocStructFieldPtr(inst, 1),
+                .struct_field_ptr_index_2 => try gen.preallocStructFieldPtr(inst, 2),
+                .struct_field_ptr_index_3 => try gen.preallocStructFieldPtr(inst, 3),
+                .struct_field_val => try gen.preallocStructFieldVal(inst),
                 .slice => try gen.preallocSlice(inst),
                 .slice_len => {
                     const ty = gen.air.typeOfIndex(inst, &gen.zcu.intern_pool);
@@ -838,6 +844,121 @@ const Gen = struct {
         } };
     }
 
+    /// 结构体字段访问的操作数与字段下标。
+    /// `struct_field_ptr`/`struct_field_val` 的操作数在 extra `Air.StructField`；
+    /// `struct_field_ptr_index_N` 的操作数在 `ty_op`，下标即 N。
+    fn structFieldOperandInfo(gen: *Gen, inst: Air.Inst.Index, index: ?u32) struct {
+        operand: Air.Inst.Ref,
+        field_index: u32,
+    } {
+        const data = gen.air.instructions.items(.data)[@intFromEnum(inst)];
+        if (index) |i| return .{ .operand = data.ty_op.operand, .field_index = i };
+        const sf = gen.air.extraData(Air.StructField, data.ty_pl.payload).data;
+        return .{ .operand = sf.struct_operand, .field_index = sf.field_index };
+    }
+
+    /// 结构体字段的字节偏移（编译期常量）。
+    fn structFieldByteOffset(gen: *Gen, struct_ty: Type, field_index: u32) codegen.CodeGenError!i32 {
+        const off = struct_ty.structFieldOffset(field_index, gen.zcu);
+        if (off > std.math.maxInt(i32)) return gen.fail(
+            "mcs backend: struct field offset is too large",
+            .{},
+        );
+        return @intCast(off);
+    }
+
+    /// `.struct_field_ptr` / `.struct_field_ptr_index_N`：指向结构体字段的指针。
+    /// 编译期基址（局部对象 / 全局符号 / 固定地址）直接折进描述；运行期指针记成 `.ptr_rt`，
+    /// 由 `emitElemPtr` 物化 `base + off`。
+    fn preallocStructFieldPtr(gen: *Gen, inst: Air.Inst.Index, index: ?u32) codegen.CodeGenError!void {
+        const info = gen.structFieldOperandInfo(inst, index);
+        const operand_ty = gen.air.typeOf(info.operand, &gen.zcu.intern_pool);
+        const struct_ty = operand_ty.childType(gen.zcu);
+        const field_off = try gen.structFieldByteOffset(struct_ty, info.field_index);
+
+        // 编译期指针：全局/外部符号或 `@ptrFromInt` 固定地址 + 字段偏移。
+        if (info.operand.toInterned() != null) {
+            const addr = gen.allocFrame(3);
+            if (try gen.globalSymbolOf(info.operand)) |g| {
+                if (g.space != .xdata) return gen.fail(
+                    "mcs backend: struct field pointer into a non-xdata global is not implemented yet",
+                    .{},
+                );
+                gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
+                    .addr = addr,
+                    .sym = g.name,
+                    .off = @as(i32, @intCast(g.off)) + field_off,
+                } };
+                return;
+            }
+            if (gen.fixedAddrOf(info.operand)) |a| {
+                gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
+                    .addr = addr,
+                    .use_imm = true,
+                    .imm_base = a,
+                    .off = field_off,
+                } };
+                return;
+            }
+            return gen.fail("mcs backend: unsupported pointer base", .{});
+        }
+
+        const base_idx = info.operand.toIndex().?;
+        switch (gen.vals[@intFromEnum(base_idx)]) {
+            .ptr => |p| gen.vals[@intFromEnum(inst)] = .{ .ptr = .{
+                .base = p.base,
+                .off = p.off + field_off,
+            } },
+            .ptr_rt => |pr| {
+                const new_addr = gen.allocFrame(3);
+                gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
+                    .addr = new_addr,
+                    .base_addr = pr.addr,
+                    .off = pr.off + field_off,
+                } };
+            },
+            .frame => |d| {
+                // `.alloc` 的帧槽存放对象本身；其余帧槽存放的是 3 字节指针值。
+                const op_tag = gen.air.instructions.items(.tag)[@intFromEnum(base_idx)];
+                if (op_tag == .alloc) {
+                    gen.vals[@intFromEnum(inst)] = .{ .ptr = .{ .base = d, .off = field_off } };
+                } else {
+                    const new_addr = gen.allocFrame(3);
+                    gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
+                        .addr = new_addr,
+                        .base_addr = d,
+                        .off = field_off,
+                    } };
+                }
+            },
+            else => return gen.fail("mcs backend: unsupported struct field pointer base", .{}),
+        }
+    }
+
+    /// `.struct_field_val`：从结构体**值**取字段。标量字段复制到结果帧槽；聚合字段
+    /// 直接以父对象存储+偏移作为视图。
+    fn preallocStructFieldVal(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
+        const info = gen.structFieldOperandInfo(inst, null);
+        const operand_ty = gen.air.typeOf(info.operand, &gen.zcu.intern_pool);
+        const field_ty = operand_ty.fieldType(info.field_index, gen.zcu);
+        if (!field_ty.hasRuntimeBits(gen.zcu)) return;
+        if (field_ty.isSlice(gen.zcu)) return gen.fail(
+            "mcs backend: slice-typed struct field value is not implemented yet",
+            .{},
+        );
+        const field_off = try gen.structFieldByteOffset(operand_ty, info.field_index);
+        if (gen.isAggOrSlice(field_ty)) {
+            if (info.operand.toIndex() == null) return gen.fail(
+                "mcs backend: constant struct field value is not implemented yet",
+                .{},
+            );
+            const base = try gen.aggSrcDisp(info.operand);
+            gen.vals[@intFromEnum(inst)] = .{ .ptr = .{ .base = base + field_off, .off = 0 } };
+            return;
+        }
+        gen.vals[@intFromEnum(inst)] = gen.allocResult(try gen.scalarSize(field_ty));
+    }
+
     /// `.slice(ptr, len)`：编译期 `ptr`+`len` 折叠为切片视图；否则物化为 6 字节值。
     fn preallocSlice(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
         const ty_pl = gen.air.instructions.items(.data)[@intFromEnum(inst)].ty_pl;
@@ -1166,6 +1287,13 @@ const Gen = struct {
                 .switch_br => try gen.emitSwitch(inst, false),
                 .loop_switch_br => try gen.emitSwitch(inst, true),
                 .ptr_elem_ptr => try gen.emitElemPtr(inst),
+                .struct_field_ptr,
+                .struct_field_ptr_index_0,
+                .struct_field_ptr_index_1,
+                .struct_field_ptr_index_2,
+                .struct_field_ptr_index_3,
+                => try gen.emitStructFieldPtr(inst),
+                .struct_field_val => try gen.emitStructFieldVal(inst),
                 .slice => try gen.emitSlice(inst),
                 .slice_len => try gen.emitSliceLen(inst),
                 .slice_ptr => try gen.emitSlicePtr(inst),
@@ -1657,7 +1785,17 @@ const Gen = struct {
                     try gen.emitAbsElemPtr(pr);
                     return;
                 }
-                if (pr.base_addr == 0) return; // 无 base，无需物化（参数 ptr_rt 直接用 addr）
+                if (pr.base_addr == 0) {
+                    // 无运行期基址：参数 ptr_rt 直接用 addr；编译期符号/固定地址 + 偏移
+                    // （结构体字段指针）需在此物化。
+                    if (pr.sym.len == 0 and !pr.use_imm) return;
+                    if (gen.arch != .mcs251) return gen.fail(
+                        "mcs backend: struct field pointer on MCS-51 is not implemented yet",
+                        .{},
+                    );
+                    try gen.emitConstPtrPlusOff(pr);
+                    return;
+                }
                 if (gen.arch == .mcs51) {
                     // MCS-51：16 位指针帧内小端（+0=低，+1=高），用 DPTR 做 16 位加。
                     const ps = gen.ptrBytes();
@@ -1688,6 +1826,65 @@ const Gen = struct {
             },
             else => {}, // 编译期 .ptr 元素指针无代码
         }
+    }
+
+    /// `.struct_field_ptr`：编译期 `.ptr` 已在 prealloc 折进偏移；`.ptr_rt` 物化同
+    /// `emitElemPtr`（含编译期符号/固定地址 + 字段偏移）。
+    fn emitStructFieldPtr(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
+        try gen.emitElemPtr(inst);
+    }
+
+    /// `.struct_field_val`：标量字段从父对象存储+偏移逐字节复制到结果帧槽；聚合字段已在
+    /// prealloc 记录为视图，无需代码。
+    fn emitStructFieldVal(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
+        const info = gen.structFieldOperandInfo(inst, null);
+        const operand_ty = gen.air.typeOf(info.operand, &gen.zcu.intern_pool);
+        const field_ty = operand_ty.fieldType(info.field_index, gen.zcu);
+        if (!field_ty.hasRuntimeBits(gen.zcu)) return;
+        if (gen.isAggOrSlice(field_ty)) return;
+        const field_off = try gen.structFieldByteOffset(operand_ty, info.field_index);
+        const idx = info.operand.toIndex() orelse return gen.fail(
+            "mcs backend: constant struct field value is not implemented yet",
+            .{},
+        );
+        const base = switch (gen.vals[@intFromEnum(idx)]) {
+            .ptr => |p| p.base + p.off,
+            .frame => |d| d,
+            else => return gen.fail("mcs backend: struct value has no storage", .{}),
+        };
+        const size = try gen.scalarSize(field_ty);
+        try gen.moveValue(.{ .frame = base + field_off }, gen.vals[@intFromEnum(inst)], size);
+    }
+
+    /// 物化「编译期基址（全局符号 / 固定地址）+ `off`」到 `pr.addr` 的 3 字节绝对地址。
+    fn emitConstPtrPlusOff(gen: *Gen, pr: anytype) codegen.CodeGenError!void {
+        const tmp = gen.allocFrame(3);
+        try gen.materializeConstAddr(
+            if (pr.sym.len != 0) pr.sym else null,
+            pr.imm_base,
+            tmp,
+        );
+        try gen.loadPtrToDr28(.{ .frame = tmp }, 3);
+        if (pr.off > 0) {
+            if (pr.off > 0xffff) return gen.fail(
+                "mcs backend: struct field offset is too large",
+                .{},
+            );
+            try gen.addInst(.add, &.{
+                .{ .reg = .{ .dr = 7 } },
+                .{ .imm = .{ .value = @intCast(pr.off), .bits = 16 } },
+            });
+        } else if (pr.off < 0) {
+            if (pr.off < -0xffff) return gen.fail(
+                "mcs backend: struct field offset is too large",
+                .{},
+            );
+            try gen.addInst(.sub, &.{
+                .{ .reg = .{ .dr = 7 } },
+                .{ .imm = .{ .value = @intCast(-pr.off), .bits = 16 } },
+            });
+        }
+        try gen.storeDr28ToFrame(pr.addr, 3);
     }
 
     /// 编译期基址的某一字节操作数：符号用 `#_sym` / `#(_sym >> 8)` / `#(_sym >> 16)`，
@@ -2417,51 +2614,110 @@ const Gen = struct {
         return .{ .imm_symbol = .{ .symbol_off = .{ .base = sym, .off = @intCast(off) } } };
     }
 
+    /// 编译期常量指针的落点：数据符号（含空间）或固定整数地址。
+    const ConstPtrTarget = union(enum) {
+        sym: GlobalRef,
+        imm: u32,
+    };
+
+    /// 解析编译期常量指针（`ref` 须为 interned 指针值）。沿 `.field`/`.arr_elem`/
+    /// `.opt_payload`/`.eu_payload` 链递归累加字节偏移，最终归到全局符号
+    /// （`.nav`/`extern`）或固定地址（`.int`）。auto 布局结构体（普通 `struct`）的
+    /// 字段指针即 `.field` 链。
+    fn resolveConstPtr(gen: *Gen, ref: Air.Inst.Ref) codegen.CodeGenError!?ConstPtrTarget {
+        const ip_index = ref.toInterned() orelse return null;
+        return gen.resolvePtrIndex(ip_index, 0);
+    }
+
+    fn resolvePtrIndex(
+        gen: *Gen,
+        ip_index: InternPool.Index,
+        add_off: u64,
+    ) codegen.CodeGenError!?ConstPtrTarget {
+        const ip = &gen.zcu.intern_pool;
+        switch (ip.indexToKey(ip_index)) {
+            .ptr => |p| {
+                const off = add_off + p.byte_offset;
+                switch (p.base_addr) {
+                    .nav => |nav| {
+                        var space: SymbolSpace = .xdata;
+                        const n = ip.getNav(nav);
+                        if (n.resolved) |r| {
+                            if (r.@"linksection".toSlice(ip)) |s| {
+                                if (std.mem.eql(u8, s, ".data")) {
+                                    space = .data;
+                                } else if (std.mem.eql(u8, s, ".idata")) {
+                                    space = .idata;
+                                }
+                            }
+                        }
+                        const name = try std.fmt.allocPrint(gen.gpa, "_{s}", .{n.name.toSlice(ip)});
+                        try gen.mir.addOwned(gen.gpa, name);
+                        if (off > std.math.maxInt(u32)) return null;
+                        return .{ .sym = .{ .name = name, .space = space, .off = @intCast(off) } };
+                    },
+                    .int => {
+                        if (off > std.math.maxInt(u32)) return null;
+                        return .{ .imm = @intCast(off) };
+                    },
+                    .field => |field| {
+                        const base_ptr = Value.fromInterned(field.base);
+                        const base_ty = base_ptr.typeOf(gen.zcu).childType(gen.zcu);
+                        const field_off: u64 = switch (base_ty.zigTypeTag(gen.zcu)) {
+                            .pointer => blk: {
+                                if (!base_ty.isSlice(gen.zcu)) return null;
+                                break :blk switch (field.index) {
+                                    Value.slice_ptr_index => 0,
+                                    Value.slice_len_index => @divExact(gen.zcu.getTarget().ptrBitWidth(), 8),
+                                    else => return null,
+                                };
+                            },
+                            .@"struct", .@"union" => base_ty.structFieldOffset(@intCast(field.index), gen.zcu),
+                            else => return null,
+                        };
+                        return gen.resolvePtrIndex(field.base, off + field_off);
+                    },
+                    .arr_elem => |ae| {
+                        const base_ptr_ty = Value.fromInterned(ae.base).typeOf(gen.zcu);
+                        const elem_size = base_ptr_ty.childType(gen.zcu).abiSize(gen.zcu);
+                        return gen.resolvePtrIndex(ae.base, off + elem_size * ae.index);
+                    },
+                    .opt_payload => |opt_ptr| return gen.resolvePtrIndex(opt_ptr, off),
+                    .eu_payload => |eu_ptr| {
+                        const payload_ty = Value.fromInterned(eu_ptr).typeOf(gen.zcu)
+                            .childType(gen.zcu).errorUnionPayload(gen.zcu);
+                        return gen.resolvePtrIndex(eu_ptr, off + payload_ty.abiSize(gen.zcu));
+                    },
+                    .uav, .comptime_alloc, .comptime_field => return null,
+                }
+            },
+            .@"extern" => |e| {
+                const name = try std.fmt.allocPrint(gen.gpa, "_{s}", .{e.name.toSlice(ip)});
+                try gen.mir.addOwned(gen.gpa, name);
+                if (add_off > std.math.maxInt(u32)) return null;
+                return .{ .sym = .{ .name = name, .space = .xdata, .off = @intCast(add_off) } };
+            },
+            else => return null,
+        }
+    }
+
     /// 若 `ref` 是编译期指向全局/外部数据符号的指针，返回其符号名（`_` 前缀）与数据空间。
     /// 空间由该声明（nav）的 `linksection` 决定：`.data` / `.idata`，默认 `.xdata`。
     fn globalSymbolOf(gen: *Gen, ref: Air.Inst.Ref) codegen.CodeGenError!?GlobalRef {
-        const ip_index = ref.toInterned() orelse return null;
-        const ip = &gen.zcu.intern_pool;
-        var space: SymbolSpace = .xdata;
-        var off: u32 = 0;
-        const raw: []const u8 = switch (ip.indexToKey(ip_index)) {
-            .ptr => |p| switch (p.base_addr) {
-                .nav => |nav| blk: {
-                    off = @truncate(p.byte_offset);
-                    const n = ip.getNav(nav);
-                    if (n.resolved) |r| {
-                        if (r.@"linksection".toSlice(ip)) |s| {
-                            if (std.mem.eql(u8, s, ".data")) {
-                                space = .data;
-                            } else if (std.mem.eql(u8, s, ".idata")) {
-                                space = .idata;
-                            }
-                        }
-                    }
-                    break :blk n.name.toSlice(ip);
-                },
-                else => return null,
-            },
-            .@"extern" => |e| e.name.toSlice(ip),
-            else => return null,
+        const t = (try gen.resolveConstPtr(ref)) orelse return null;
+        return switch (t) {
+            .sym => |s| s,
+            .imm => null,
         };
-        const name = try std.fmt.allocPrint(gen.gpa, "_{s}", .{raw});
-        try gen.mir.addOwned(gen.gpa, name);
-        return .{ .name = name, .space = space, .off = off };
     }
 
     /// 固定整数地址（`@ptrFromInt`）的编译期值（xdata）。
     fn fixedAddrOf(gen: *Gen, ref: Air.Inst.Ref) ?u32 {
-        const ip_index = ref.toInterned() orelse return null;
-        const ip = &gen.zcu.intern_pool;
-        const addr: u64 = switch (ip.indexToKey(ip_index)) {
-            .ptr => |p| switch (p.base_addr) {
-                .int => p.byte_offset,
-                else => return null,
-            },
-            else => return null,
+        const t = (gen.resolveConstPtr(ref) catch return null) orelse return null;
+        return switch (t) {
+            .imm => |a| a,
+            .sym => null,
         };
-        return @truncate(addr);
     }
 
     /// 固定地址是否落在 8 位直址区（`data`/低 RAM 0x00–0x7F 与 SFR 0x80–0xFF）。

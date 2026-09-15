@@ -6,12 +6,13 @@
 - **零平台依赖**：不含 SFR、内联汇编、`std`、堆分配；可编到 **mcs51 / mcs251 / 主机**。
 - **单缓冲区、单趟编码**：直接在用户缓冲区里“先占位长度码、后回填”，无需第二缓冲区。
 - **两份等价实现**：`cobs.zig`（Zig）与 `cobs.h` / `cobs.c`（C），供各自语言原生调用。
+- **均可重入**：每实例一份状态（Zig `Encoder` 结构体 / C `cobs_enc_t` 句柄），可同时多实例。
 
 ## 文件
 
 | 文件 | 说明 |
 | --- | --- |
-| `cobs.zig` | Zig 接口（**单实例**，见下）。 |
+| `cobs.zig` | Zig 接口（**可重入**：`Encoder` 结构体；另附绑定模块级实例的免句柄 API）。 |
 | `cobs.h` / `cobs.c` | C 接口（**可重入**，结构体 + 显式句柄）。 |
 | `cobs_zig_test.zig` | 主机往返测试（Zig）：`zig run lib/cobs/cobs_zig_test.zig` |
 | `cobs_c_test.c` | 主机往返测试（C）：`zig cc lib/cobs/cobs_c_test.c lib/cobs/cobs.c -o t.exe; .\t.exe` |
@@ -52,29 +53,34 @@
 
 ## Zig 接口
 
-> **单实例限制**：当前 mcs 后端**尚不支持结构体字段访问**，故 Zig 版用模块级变量保存一份状态，
-> 同一时刻只支持一个编码器。待后端支持结构体后，可改为调用方持有的 `Encoder`（与 C 版对齐）。
+**推荐：`Encoder`（可重入，多实例）**
 
 ```zig
 const cobs = @import("cobs");
 
 var buf: [128]u8 = undefined;
-cobs.initRaw(&buf, buf.len);        // 绑定用户缓冲区（指针 + 容量）
+var e: cobs.Encoder = undefined;    // 状态由调用方持有，可同时开多个
+e.init(&buf);                       // 或 e.initRaw(buf.ptr, buf.len)
 
-cobs.logBegin(0x0002);              // 每帧开始：重置 + 写 id
-cobs.logU16(1234);
-cobs.logVar(1234);
-cobs.logStr("hi");
-const n = cobs.logEnd();            // 写 XOR + COBS 收尾；n 为可发送长度（含 0x00）
+e.logBegin(0x0002);                 // 每帧开始：重置 + 写 id
+e.logU16(1234);
+e.logVar(1234);
+e.logStr("hi");
+const n = e.logEnd();               // 写 XOR + COBS 收尾；n 为可发送长度（含 0x00）
 if (n != 0) {
-    const p = cobs.data();
+    const p = e.data();
     var i: u16 = 0;
     while (i < n) : (i += 1) uart_putc(p[i]);   // 输出方式由调用方决定
 }
 ```
 
-底层通用接口：`initRaw(buf, cap)` / `reset()` / `add(byte)` / `finish() u16` /
-一次性 `encode(in, in_len, out, out_cap) u16`；以及 `data()` / `length()` / `overflow()`。
+`Encoder` 方法：`init`/`initRaw`/`reset`/`add`/`finish`/`data`/`length`/`overflow`，
+以及 `logBegin`/`logRaw`/`logU8`/`logU16`/`logU32`/`logVar`/`logBytes`/`logStr`/`logEnd`。
+
+> **免句柄便捷 API（单实例）**：同文件还提供 `cobs.initRaw` / `cobs.logBegin` / … 等，
+> 它们转发到模块级实例 `s_enc`，适合只有一个编码器的场景。
+> 底层通用接口：`initRaw(buf, cap)` / `reset()` / `add(byte)` / `finish() u16` /
+> 一次性 `encode(in, in_len, out, out_cap) u16`；以及 `data()` / `length()` / `overflow()`。
 
 构建注入命名模块（`@import("cobs")`）：
 
@@ -110,23 +116,31 @@ void main(void) {
 
 - **容量**：一帧原始内容需能被缓冲区容下。COBS 最坏开销 ≈ `原始长度 + 原始长度/254 + 1`。
   超出时置 `overflow`，`finish()`/`logEnd()` 返回 `0`，调用方应丢弃该帧。
-- **可重入性**：C 版可重入（每实例一个 `cobs_enc_t`）；Zig 版单实例（后端限制）。
+- **可重入性**：Zig 版用 `Encoder`、C 版用 `cobs_enc_t`，均为每实例一份状态（可多实例）。
+  Zig 的免句柄 API 是绑定到模块级实例的薄封装（单实例）。
+- **代码尺寸（mcs 后端，重要）**：`Encoder` 的方法刻意用普通 `fn`（**非 `inline`**）。mcs 后端
+  会为每个内联调用点各生成一份代码；若把整套记日志逻辑（`add`/`logRaw`/…）全内联，单个 `_main`
+  就能膨胀到 ~64KB，**顶满 AI8051U 的 Flash**（表现为部分帧/函数被截坏）。改成普通函数后
+  `ziglog` 的 CSEG 从 ~64KB 降到 ~12.5KB。
+  免句柄 API 仍是 `inline` 包装（只内联一句“取 `s_enc` 地址 + 调用方法”）：既省代码，也避免
+  与同名方法产生重复符号（该后端按函数名生成汇编标签，不做命名空间修饰）。
 - **`usize`/指针**：库只用指针（`[*]u8`）与 `u16` 长度；不依赖 `usize` 作为跨语言返回值。
 - 两份实现（Zig/C）**保持同步**由主机测试保障：改动后请分别运行两个测试。
 
 ## 后端依赖（用于本仓库的 mcs251 目标）
 
-在 AI8051U（mcs251）上要能用「调用方提供的任意缓冲区指针」，依赖后端两项能力（均已实现）：
+在 AI8051U（mcs251）上要能用「调用方提供的任意缓冲区指针」，依赖后端三项能力（均已实现）：
 
 1. **运行期指针 + 运行期下标**：`p[i]`（`p: [*]u8`，`i` 运行期）→ 3 字节绝对地址 + `@dr28`。
 2. **编译期指针物化**：把 `&全局数组` / `@ptrFromInt` 这类编译期指针存入指针变量
    （`s_buf = buf`）→ 帧内 3 字节地址。
+3. **结构体字段访问**：`Encoder` 的 `e.buf` / `e.len` / `e.code` 等（指针参数或全局实例）
+   经 `struct_field_ptr`(+运行期下标) 读写；普通 `struct` 全局的字段指针（`.field` 链）也可解析。
 
 限制：以上均为 **mcs251 + xdata + 1 字节元素**；mcs51 下 Zig 版暂不可用（C 版无此限制）。
 
 ## 后续可推进
 
-- 后端支持结构体字段访问后，把 Zig 接口改为 `Encoder` 结构体（可重入、多实例）。
 - 支持多字节元素下标（如 `u16` 数组），以及 `data`/`idata`/`edata` 空间的运行期下标。
 - 增加 CRC16（替代 XOR）、时间戳、按 id 的编译期字符串池（进一步省字节）。
 - 接收端解析库（COBS 解码 + 帧解析）也做成 Zig/C 双接口，便于 MCU 间通信。

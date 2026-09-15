@@ -59,12 +59,61 @@ fn logRoundTrip() !void {
     if (dec[expect.len] != ck) return error.Checksum;
 }
 
+/// 用可重入 `Encoder` 编码与上面 `logRoundTrip` 相同的一帧，并逐字节比较两种接口的输出。
+fn encoderEqualsModule() !void {
+    var buf: [256]u8 = undefined;
+    var e: cobs.Encoder = undefined;
+    e.init(&buf);
+    e.logBegin(0x0002);
+    e.logU16(0xBEEF);
+    e.logStr("hi");
+    const n = e.logEnd();
+    if (n == 0) return error.Overflow;
+
+    var buf2: [256]u8 = undefined;
+    cobs.initRaw(&buf2, @intCast(buf2.len));
+    cobs.logBegin(0x0002);
+    cobs.logU16(0xBEEF);
+    cobs.logStr("hi");
+    const n2 = cobs.logEnd();
+    if (n2 != n or !std.mem.eql(u8, buf[0..n], buf2[0..n2])) return error.EncoderMismatch;
+}
+
+/// 两个 `Encoder` 实例交叉使用，验证可重入（模块级 API 只有一个实例做不到）。
+fn twoEncoders() !void {
+    var b1: [64]u8 = undefined;
+    var b2: [64]u8 = undefined;
+    var e1: cobs.Encoder = undefined;
+    var e2: cobs.Encoder = undefined;
+    e1.init(&b1);
+    e2.init(&b2);
+
+    e1.logBegin(0x0001);
+    e1.logU8(0xAA);
+    e2.logBegin(0x0002);
+    e2.logU8(0xBB);
+    const n1 = e1.logEnd();
+    const n2 = e2.logEnd();
+    if (n1 == 0 or n2 == 0) return error.Overflow;
+
+    var d1: [64]u8 = undefined;
+    var d2: [64]u8 = undefined;
+    const m1 = decode(b1[0 .. n1 - 1], &d1) orelse return error.Decode;
+    const m2 = decode(b2[0 .. n2 - 1], &d2) orelse return error.Decode;
+    const want1 = [_]u8{ 0x7e, 0x01, 0x00, 0xAA };
+    const want2 = [_]u8{ 0x7e, 0x02, 0x00, 0xBB };
+    if (m1 != want1.len + 1 or !std.mem.eql(u8, d1[0..want1.len], &want1)) return error.Frame1;
+    if (m2 != want2.len + 1 or !std.mem.eql(u8, d2[0..want2.len], &want2)) return error.Frame2;
+}
+
 pub fn main() !void {
     const cases = [_][]const u8{
         &.{}, &.{0}, &.{ 0, 0, 0 }, &.{ 0x11, 0, 0 }, &.{ 0x11, 0x22 }, &.{ 0x11, 0, 0x22 },
     };
     for (cases) |c| try roundTrip(c);
     try logRoundTrip();
+    try encoderEqualsModule();
+    try twoEncoders();
 
     var seed: u32 = 1234;
     var t: u32 = 1;
