@@ -169,6 +169,8 @@ target("ptrtest")
         local projdir = os.projectdir()
         local scriptdir = path.join(projdir, "projects/ai8051u_ptrtest")
         local incdir = path.join(projdir, "include")
+        local uartdir = path.join(projdir, "port/uart251")
+        local haldir = path.join(projdir, "port/stc-hal")
 
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
@@ -181,39 +183,45 @@ target("ptrtest")
         end
 
         local main_c   = path.join(scriptdir, "main.c")
+        local uart_c   = path.join(uartdir, "uart251.c")
+        local delay_c  = path.join(haldir, "AI8051U_Delay.c")
         local zig_src  = path.join(scriptdir, "ptrtest.zig")
         local main_rel = path.join(scriptdir, "main.rel")
+        local uart_rel = path.join(scriptdir, "uart251.rel")
+        local delay_rel = path.join(scriptdir, "delay.rel")
         local zig_asm  = path.join(scriptdir, "ptrtest.asm")
         local zig_rel  = path.join(scriptdir, "ptrtest.rel")
         local ihx      = path.join(scriptdir, "ptrtest.ihx")
 
-        -- [1/4] C -> .rel
-        print("[1/4] C -> rel   : main.c")
-        os.vrunv(sdcc, {"-mmcs251", "--model-large", "-I", incdir, "-c", main_c, "-o", main_rel})
+        -- [1/5] C -> .rel
+        print("[1/5] C -> rel   : main.c, uart251.c, AI8051U_Delay.c")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "-I", incdir, "-I", uartdir, "-I", haldir, "-c", main_c, "-o", main_rel})
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "-I", incdir, "-I", uartdir, "-I", haldir, "-c", uart_c, "-o", uart_rel})
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "-I", incdir, "-I", uartdir, "-I", haldir, "-c", delay_c, "-o", delay_rel})
 
-        -- [2/4] Zig -> .asm（ZIG_LIB_DIR 指向带 mcs251 目标定义的 zig/lib）
-        print("[2/4] Zig -> asm : ptrtest.zig")
+        -- [2/5] Zig -> .asm（ZIG_LIB_DIR 指向带 mcs251 目标定义的 zig/lib）
+        print("[2/5] Zig -> asm : ptrtest.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "zig/lib"))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. zig_asm, zig_src})
 
-        -- [2.5/4] 修局部标签重名（同 blink；见 tools/fix_mcs_labels.py）
+        -- [3/5] 修局部标签重名（同 blink；见 tools/fix_mcs_labels.py）
         local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
         if os.isfile(fixer) then
             os.vrunv(get_config("python"), {fixer, zig_asm})
         end
 
-        -- [3/4] .asm -> .rel
-        print("[3/4] asm -> rel : ptrtest.asm")
+        -- [4/5] .asm -> .rel
+        print("[4/5] asm -> rel : ptrtest.asm")
         os.vrunv(sdas, {"-plosgffw", zig_rel, zig_asm})
 
-        -- [4/4] link -> .ihx（sdcc 自动补启动与运行库）
+        -- [5/5] link -> .ihx（sdcc 自动补启动与运行库）
         -- AI8051U 程序存储器在 FF:0000-FF:FFFF，复位 PC=FF:0000，故代码必须链到 0xff0000
-        print("[4/4] link -> ihx: ptrtest.ihx")
+        print("[5/5] link -> ihx: ptrtest.ihx")
         os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
-                        main_rel, zig_rel, "-o", ihx})
+                        main_rel, uart_rel, delay_rel, zig_rel, "-o", ihx})
 
         target:set("targetfile", ihx)
         print("OK -> " .. ihx)
@@ -310,6 +318,149 @@ target("simtest")
         local ihx = target:get("targetfile")
         if not ihx or not os.isfile(ihx) then
             raise("还没构建，先 xmake build --mcs-arch=mcs51 simtest")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- led：只点灯——P1.1 上的 LED 以 1Hz 闪烁（纯 C，用 STC HAL 的 delay_ms）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build led
+target("led")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "projects/ai8051u_led")
+        local incdir = path.join(projdir, "include")
+        local haldir = path.join(projdir, "port/stc-hal")
+
+        local sdcc, model_opt
+        if arch == "mcs251" then
+            sdcc = get_config("sdcc251")
+            model_opt = "-mmcs251"
+        else
+            sdcc = get_config("sdcc")
+            model_opt = "-mmcs51"
+        end
+
+        if not os.isfile(sdcc) then
+            raise("找不到工具：" .. sdcc .. "（用 --sdcc / --sdcc251 覆盖路径）")
+        end
+
+        local main_c   = path.join(scriptdir, "main.c")
+        local delay_c  = path.join(haldir, "AI8051U_Delay.c")
+        local main_rel = path.join(scriptdir, "main.rel")
+        local delay_rel = path.join(scriptdir, "delay.rel")
+        local ihx      = path.join(scriptdir, "led.ihx")
+        local inc_args = {"-I", incdir, "-I", haldir}
+
+        -- [1/3] C -> .rel
+        print("[1/3] C -> rel   : main.c, AI8051U_Delay.c")
+        os.vrunv(sdcc, table.join({model_opt, "--model-large"}, inc_args, {"-c", main_c, "-o", main_rel}))
+        os.vrunv(sdcc, table.join({model_opt, "--model-large"}, inc_args, {"-c", delay_c, "-o", delay_rel}))
+
+        -- [2/3] link -> .ihx（mcs251 需 --code-loc 0xff0000）
+        print("[2/3] link -> ihx: led.ihx")
+        local link_args
+        if arch == "mcs251" then
+            link_args = {model_opt, "--model-large", "--code-loc", "0xff0000",
+                         main_rel, delay_rel, "-o", ihx}
+        else
+            link_args = {model_opt, "--model-large", main_rel, delay_rel, "-o", ihx}
+        end
+        os.vrunv(sdcc, link_args)
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "projects/ai8051u_led")
+        for _, name in ipairs({"main.rel", "main.asm", "main.lst", "main.rst", "main.sym",
+                              "delay.rel", "delay.lst", "delay.rst", "delay.sym",
+                              "led.ihx", "led.lk", "led.map", "led.mem", "led.lst", "led.rst", "led.sym"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 led")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- uart：UART1(P3.0/P3.1) 9600bps 打印自检（纯 C，用 port/uart251）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build uart
+target("uart")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "projects/ai8051u_uart")
+        local incdir = path.join(projdir, "include")
+        local haldir = path.join(projdir, "port/stc-hal")
+        local uartdir = path.join(projdir, "port/uart251")
+
+        local sdcc, model_opt
+        if arch == "mcs251" then
+            sdcc = get_config("sdcc251")
+            model_opt = "-mmcs251"
+        else
+            sdcc = get_config("sdcc")
+            model_opt = "-mmcs51"
+        end
+
+        if not os.isfile(sdcc) then
+            raise("找不到工具：" .. sdcc .. "（用 --sdcc / --sdcc251 覆盖路径）")
+        end
+
+        local main_c   = path.join(scriptdir, "main.c")
+        local uart_c   = path.join(uartdir, "uart251.c")
+        local delay_c  = path.join(haldir, "AI8051U_Delay.c")
+        local main_rel = path.join(scriptdir, "main.rel")
+        local uart_rel = path.join(scriptdir, "uart251.rel")
+        local delay_rel = path.join(scriptdir, "delay.rel")
+        local ihx      = path.join(scriptdir, "uart.ihx")
+        local inc_args = {"-I", incdir, "-I", haldir, "-I", uartdir}
+
+        -- [1/3] C -> .rel
+        print("[1/3] C -> rel   : main.c, uart251.c, AI8051U_Delay.c")
+        os.vrunv(sdcc, table.join({model_opt, "--model-large"}, inc_args, {"-c", main_c, "-o", main_rel}))
+        os.vrunv(sdcc, table.join({model_opt, "--model-large"}, inc_args, {"-c", uart_c, "-o", uart_rel}))
+        os.vrunv(sdcc, table.join({model_opt, "--model-large"}, inc_args, {"-c", delay_c, "-o", delay_rel}))
+
+        -- [2/3] link -> .ihx（mcs251 需 --code-loc 0xff0000）
+        print("[2/3] link -> ihx: uart.ihx")
+        local link_args
+        if arch == "mcs251" then
+            link_args = {model_opt, "--model-large", "--code-loc", "0xff0000",
+                         main_rel, uart_rel, delay_rel, "-o", ihx}
+        else
+            link_args = {model_opt, "--model-large", main_rel, uart_rel, delay_rel, "-o", ihx}
+        end
+        os.vrunv(sdcc, link_args)
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "projects/ai8051u_uart")
+        for _, name in ipairs({"main.rel", "main.asm", "main.lst", "main.rst", "main.sym",
+                              "uart251.rel", "uart251.lst", "uart251.rst", "uart251.sym",
+                              "delay.rel", "delay.lst", "delay.rst", "delay.sym",
+                              "uart.ihx", "uart.lk", "uart.map", "uart.mem", "uart.lst", "uart.rst", "uart.sym"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 uart")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
