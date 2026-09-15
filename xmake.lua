@@ -524,6 +524,7 @@ target("zigled")
         -- [5/5] sdcc 链接 -> .ihx（--code-loc 0xff0000 = AI8051U 复位入口）
         print("[5/5] link -> ihx : led.ihx")
         os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        "--data-loc", "0x30", "--idata-loc", "0x80",
                         crt0_rel, led_rel, "-o", ihx})
 
         target:set("targetfile", ihx)
@@ -605,6 +606,7 @@ target("zigasm")
         -- [5/5] sdcc 链接 -> .ihx
         print("[5/5] link -> ihx : led.ihx")
         os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        "--data-loc", "0x30", "--idata-loc", "0x80",
                         crt0_rel, led_rel, "-o", ihx})
 
         target:set("targetfile", ihx)
@@ -680,6 +682,7 @@ target("zigirq")
 
         print("[5/5] link -> ihx : irq.ihx")
         os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        "--data-loc", "0x30", "--idata-loc", "0x80",
                         crt0_rel, isr_rel, "-o", ihx})
 
         target:set("targetfile", ihx)
@@ -699,6 +702,82 @@ target("zigirq")
         local ihx = target:get("targetfile")
         if not ihx or not os.isfile(ihx) then
             raise("还没构建，先 xmake build --mcs-arch=mcs251 zigirq")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- zigmem：纯 Zig 演示用 linksection 把变量放到 data / idata / xdata 三个空间。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigmem
+target("zigmem")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigmem 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "projects/ai8051u_zig_mem")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool)
+            end
+        end
+
+        local mem_zig  = path.join(scriptdir, "mem.zig")
+        local mem_asm  = path.join(scriptdir, "mem.asm")
+        local mem_rel  = path.join(scriptdir, "mem.rel")
+        local crt0_rel = path.join(scriptdir, "crt0.rel")
+        local ihx      = path.join(scriptdir, "mem.ihx")
+
+        print("[1/5] Zig -> asm  : mem.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "zig/lib"))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "-Mroot=" .. mem_zig,
+                       "-Mmcs=" .. path.join(projdir, "port/mcs251.zig"),
+                       "-femit-bin=" .. mem_asm})
+
+        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
+        if os.isfile(fixer) then
+            os.vrunv(get_config("python"), {fixer, mem_asm})
+        end
+
+        print("[3/5] asm -> rel : mem.asm")
+        os.vrunv(sdas, {"-plosgffw", mem_rel, mem_asm})
+
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : mem.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        "--data-loc", "0x30", "--idata-loc", "0x80",
+                        crt0_rel, mem_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "projects/ai8051u_zig_mem")
+        for _, name in ipairs({"mem.asm", "mem.rel", "mem.lst", "mem.sym", "mem.rst",
+                              "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
+                              "mem.lk", "mem.ihx", "mem.map", "mem.mem"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 zigmem")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)

@@ -2187,13 +2187,48 @@ const Gen = struct {
         }
     }
 
-    /// 若 `ref` 是编译期指向全局/外部数据符号的指针，返回其 ASxxxx 符号名（`_` 前缀）。
-    fn globalSymbolOf(gen: *Gen, ref: Air.Inst.Ref) codegen.CodeGenError!?[]const u8 {
+    /// 全局符号所在的数据空间（由 `linksection` 选择）。
+    const SymbolSpace = enum { xdata, data, idata };
+
+    /// 一个全局/外部数据符号：ASxxxx 名（`_` 前缀）+ 空间。
+    const GlobalRef = struct {
+        name: []const u8,
+        space: SymbolSpace = .xdata,
+    };
+
+    /// 直接寻址操作数：`sym` 或 `sym+off`（8 位直址）。
+    fn directOperand(sym: []const u8, off: u32) encode.Operand {
+        if (off == 0) return .{ .dir8 = .{ .symbol = sym } };
+        return .{ .dir8 = .{ .symbol_off = .{ .base = sym, .off = @intCast(off) } } };
+    }
+
+    /// `#sym` / `#sym+off`（8 位立即数，用于 idata 的 `mov r0,#addr`）。
+    fn immAddrOperand(sym: []const u8, off: u32) encode.Operand {
+        if (off == 0) return .{ .imm_symbol = .{ .symbol = sym } };
+        return .{ .imm_symbol = .{ .symbol_off = .{ .base = sym, .off = @intCast(off) } } };
+    }
+
+    /// 若 `ref` 是编译期指向全局/外部数据符号的指针，返回其符号名（`_` 前缀）与数据空间。
+    /// 空间由该声明（nav）的 `linksection` 决定：`.data` / `.idata`，默认 `.xdata`。
+    fn globalSymbolOf(gen: *Gen, ref: Air.Inst.Ref) codegen.CodeGenError!?GlobalRef {
         const ip_index = ref.toInterned() orelse return null;
         const ip = &gen.zcu.intern_pool;
+        var space: SymbolSpace = .xdata;
         const raw: []const u8 = switch (ip.indexToKey(ip_index)) {
             .ptr => |p| switch (p.base_addr) {
-                .nav => |nav| ip.getNav(nav).name.toSlice(ip),
+                .nav => |nav| blk: {
+                    const n = ip.getNav(nav);
+                    if (n.resolved) |r| {
+                        if (r.@"linksection".toSlice(ip)) |s| {
+                            if (std.mem.eql(u8, s, ".data")) {
+                                space = .data;
+                            } else if (std.mem.eql(u8, s, ".idata")) {
+                                space = .idata;
+                            }
+                        }
+                    }
+                    break :blk n.name.toSlice(ip);
+                },
                 else => return null,
             },
             .@"extern" => |e| e.name.toSlice(ip),
@@ -2201,7 +2236,7 @@ const Gen = struct {
         };
         const name = try std.fmt.allocPrint(gen.gpa, "_{s}", .{raw});
         try gen.mir.addOwned(gen.gpa, name);
-        return name;
+        return .{ .name = name, .space = space };
     }
 
     /// 固定整数地址（`@ptrFromInt`）的编译期值（xdata）。
@@ -2268,28 +2303,73 @@ const Gen = struct {
         }
     }
 
-    /// 读全局符号 `sym`（xdata）的 `size` 字节到帧槽 `dst_disp`。
-    fn derefSymbolRead(gen: *Gen, sym: []const u8, size: u32, dst_disp: i32) codegen.CodeGenError!void {
-        try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm_symbol = .{ .symbol = sym } } });
-        var j: u32 = 0;
-        while (j < size) : (j += 1) {
-            try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
-            try gen.addInst(.mov, &.{
-                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
-                .{ .reg = .a },
-            });
-            if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+    /// 读全局符号 `g` 的 `size` 字节到帧槽 `dst_disp`，按空间选寻址：
+    /// xdata=`mov dptr,#sym; movx`，data=`mov a,sym`，idata=`mov r0,#sym; mov a,@r0`。
+    fn derefSymbolRead(gen: *Gen, g: GlobalRef, size: u32, dst_disp: i32) codegen.CodeGenError!void {
+        switch (g.space) {
+            .xdata => {
+                try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm_symbol = .{ .symbol = g.name } } });
+                var j: u32 = 0;
+                while (j < size) : (j += 1) {
+                    try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
+                    try gen.addInst(.mov, &.{
+                        gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                        .{ .reg = .a },
+                    });
+                    if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+                }
+            },
+            .data => {
+                var j: u32 = 0;
+                while (j < size) : (j += 1) {
+                    try gen.addInst(.mov, &.{ .{ .reg = .a }, directOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{
+                        gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                        .{ .reg = .a },
+                    });
+                }
+            },
+            .idata => {
+                var j: u32 = 0;
+                while (j < size) : (j += 1) {
+                    try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, immAddrOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .at_ri = 0 } });
+                    try gen.addInst(.mov, &.{
+                        gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                        .{ .reg = .a },
+                    });
+                }
+            },
         }
     }
 
-    /// 把 `src` 的 `size` 字节写全局符号 `sym`（xdata）。
-    fn derefSymbolWrite(gen: *Gen, sym: []const u8, src: Loc, size: u32) codegen.CodeGenError!void {
-        try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm_symbol = .{ .symbol = sym } } });
-        var j: u32 = 0;
-        while (j < size) : (j += 1) {
-            try gen.loadByteToA(src, j, size);
-            try gen.addInst(.movx, &.{ .{ .at_dptr = {} }, .{ .reg = .a } });
-            if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+    /// 把 `src` 的 `size` 字节写全局符号 `g`，按空间选寻址（同上）。
+    fn derefSymbolWrite(gen: *Gen, g: GlobalRef, src: Loc, size: u32) codegen.CodeGenError!void {
+        switch (g.space) {
+            .xdata => {
+                try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm_symbol = .{ .symbol = g.name } } });
+                var j: u32 = 0;
+                while (j < size) : (j += 1) {
+                    try gen.loadByteToA(src, j, size);
+                    try gen.addInst(.movx, &.{ .{ .at_dptr = {} }, .{ .reg = .a } });
+                    if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+                }
+            },
+            .data => {
+                var j: u32 = 0;
+                while (j < size) : (j += 1) {
+                    try gen.loadByteToA(src, j, size);
+                    try gen.addInst(.mov, &.{ directOperand(g.name, j), .{ .reg = .a } });
+                }
+            },
+            .idata => {
+                var j: u32 = 0;
+                while (j < size) : (j += 1) {
+                    try gen.loadByteToA(src, j, size);
+                    try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, immAddrOperand(g.name, j) });
+                    try gen.addInst(.mov, &.{ .{ .at_ri = 0 }, .{ .reg = .a } });
+                }
+            },
         }
     }
 

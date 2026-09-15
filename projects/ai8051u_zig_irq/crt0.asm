@@ -8,6 +8,7 @@
 
 	.module crt0
 	.area PSEG    (PAG,XDATA)
+	.area DSEG    (DATA)
 	.area ISEG    (DATA)
 	.area BSEG    (BIT)
 	.area HOME    (CODE)
