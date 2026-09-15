@@ -3,28 +3,10 @@
 const std = @import("std");
 const cobs = @import("cobs.zig");
 
-fn decode(enc: []const u8, out: []u8) ?usize {
-    var idx: usize = 0;
-    var o: usize = 0;
-    const n = enc.len;
-    while (idx < n) {
-        const code: usize = enc[idx];
-        idx += 1;
-        if (code == 0) return null;
-        var k: usize = 1;
-        while (k < code) : (k += 1) {
-            if (idx >= n or o >= out.len) return null;
-            out[o] = enc[idx];
-            o += 1;
-            idx += 1;
-        }
-        if (code < 255 and idx < n) {
-            if (o >= out.len) return null;
-            out[o] = 0;
-            o += 1;
-        }
-    }
-    return o;
+// 用库里的 cobs.decode 做往返校验；解出长度由调用方与期望值比对
+// （cobs.decode 返回 0 既可能是空结果也可能是失败，故此处不做 null 判定）。
+fn decode(enc: []const u8, out: []u8) usize {
+    return cobs.decode(enc.ptr, @intCast(enc.len), out.ptr, @intCast(out.len));
 }
 
 fn roundTrip(data: []const u8) !void {
@@ -32,7 +14,7 @@ fn roundTrip(data: []const u8) !void {
     const n = cobs.encode(data.ptr, @intCast(data.len), &enc_buf, @intCast(enc_buf.len));
     if (n == 0) return error.Overflow;
     var dec: [1024]u8 = undefined;
-    const m = decode(enc_buf[0 .. n - 1], &dec) orelse return error.Decode; // 去掉结尾 0x00 定界符
+    const m = decode(enc_buf[0 .. n - 1], &dec); // 去掉结尾 0x00 定界符
     if (m != data.len or !std.mem.eql(u8, data, dec[0..m])) return error.Mismatch;
     var i: usize = 0;
     while (i + 1 < n) : (i += 1) {
@@ -50,7 +32,7 @@ fn logRoundTrip() !void {
     if (n == 0) return error.Overflow;
 
     var dec: [256]u8 = undefined;
-    const m = decode(buf[0 .. n - 1], &dec) orelse return error.Decode;
+    const m = decode(buf[0 .. n - 1], &dec);
     const expect = [_]u8{ 0x7e, 0x02, 0x00, 0xef, 0xbe, 0x02, 'h', 'i' };
     if (m != expect.len + 1) return error.Len;
     if (!std.mem.eql(u8, dec[0..expect.len], &expect)) return error.Frame;
@@ -98,8 +80,8 @@ fn twoEncoders() !void {
 
     var d1: [64]u8 = undefined;
     var d2: [64]u8 = undefined;
-    const m1 = decode(b1[0 .. n1 - 1], &d1) orelse return error.Decode;
-    const m2 = decode(b2[0 .. n2 - 1], &d2) orelse return error.Decode;
+    const m1 = decode(b1[0 .. n1 - 1], &d1);
+    const m2 = decode(b2[0 .. n2 - 1], &d2);
     const want1 = [_]u8{ 0x7e, 0x01, 0x00, 0xAA };
     const want2 = [_]u8{ 0x7e, 0x02, 0x00, 0xBB };
     if (m1 != want1.len + 1 or !std.mem.eql(u8, d1[0..want1.len], &want1)) return error.Frame1;

@@ -266,6 +266,32 @@ pub inline fn encode(in: [*]const u8, in_len: u16, out: [*]u8, out_cap: u16) u16
     return s_enc.finish();
 }
 
+/// 一次性解码 `in[0..in_len)`（**不含**尾部 `0x00` 定界符）到 `out`（容量 `out_cap`）；
+/// 返回解出长度，格式非法或容量不足返回 0。无状态，可自由调用。
+pub fn decode(in: [*]const u8, in_len: u16, out: [*]u8, out_cap: u16) u16 {
+    var i: u16 = 0;
+    var o: u16 = 0;
+    while (i < in_len) {
+        const code: u16 = in[i];
+        i += 1;
+        if (code == 0) return 0; // COBS 流内不合法（0x00 只作定界符）
+        var k: u16 = 1;
+        while (k < code) : (k += 1) {
+            if (i >= in_len or o >= out_cap) return 0;
+            out[o] = in[i];
+            o += 1;
+            i += 1;
+        }
+        // code<255 表示还有后继块，隐含一个 0；末块不补（i 已到流尾）
+        if (code < 255 and i < in_len) {
+            if (o >= out_cap) return 0;
+            out[o] = 0;
+            o += 1;
+        }
+    }
+    return o;
+}
+
 /// 编码结果的缓冲区首地址。
 pub inline fn data() [*]u8 {
     return s_enc.data();

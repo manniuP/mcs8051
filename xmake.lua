@@ -987,6 +987,75 @@ target("ccobs")
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
 
+-- cmd：P0「UART 下发指令」——主机经 UART1 下发 COBS 命令帧，MCU 解析执行并回包。
+-- lib/cobs 帧格式 + lib/uart251（TX 阻塞 + RX 中断环缓）；主机端 examples/ai8051u_cmd/host/cmd.py。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build cmd
+target("cmd")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("cmd 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u_cmd")
+        local incdir = path.join(projdir, "lib/include")
+        local haldir = path.join(projdir, "lib/stc-hal")
+        local uartdir = path.join(projdir, "lib/uart251")
+        local cobsdir = path.join(projdir, "lib/cobs")
+        local cordicdir = path.join(projdir, "lib/cordic")
+
+        local sdcc = get_config("sdcc251")
+        if not os.isfile(sdcc) then
+            raise("找不到工具：" .. sdcc .. "（用 --sdcc251 覆盖路径）")
+        end
+
+        local main_c    = path.join(scriptdir, "main.c")
+        local cobs_c    = path.join(cobsdir, "cobs.c")
+        local uart_c    = path.join(uartdir, "uart251.c")
+        local cordic_c  = path.join(cordicdir, "cordic.c")
+        local main_rel  = path.join(scriptdir, "main.rel")
+        local cobs_rel  = path.join(scriptdir, "cobs.rel")
+        local uart_rel  = path.join(scriptdir, "uart251.rel")
+        local cordic_rel = path.join(scriptdir, "cordic.rel")
+        local ihx       = path.join(scriptdir, "cmd.ihx")
+        local cflags    = {"-mmcs251", "--model-large", "-DUART_BAUD=115200UL",
+                           "-I", incdir, "-I", haldir, "-I", uartdir, "-I", cobsdir, "-I", cordicdir}
+
+        print("[1/2] C -> rel   : main.c cobs.c uart251.c cordic.c")
+        os.vrunv(sdcc, table.join(cflags, {"-c", main_c, "-o", main_rel}))
+        os.vrunv(sdcc, table.join(cflags, {"-c", cobs_c, "-o", cobs_rel}))
+        os.vrunv(sdcc, table.join(cflags, {"-c", uart_c, "-o", uart_rel}))
+        os.vrunv(sdcc, table.join(cflags, {"-c", cordic_c, "-o", cordic_rel}))
+
+        print("[2/2] link -> ihx: cmd.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        main_rel, cobs_rel, uart_rel, cordic_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_cmd")
+        for _, name in ipairs({"main.rel", "cobs.rel", "uart251.rel", "cordic.rel",
+                              "main.lst", "main.rst", "main.sym", "cobs.lst", "cobs.rst", "cobs.sym",
+                              "cordic.lst", "cordic.rst", "cordic.sym",
+                              "uart251.lst", "uart251.rst", "uart251.sym",
+                              "cmd.ihx", "cmd.lk", "cmd.map", "cmd.mem", "cmd.lst", "cmd.rst", "cmd.sym"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 cmd")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
 -- usbcdc：把 STC 官方 USB-CDC（Keil C251）源码经 keil2sdcc 移植后，用 SDCC mcs251 编译链接。
 -- 源码在 examples/ai8051u_usb_cdc/src/（已翻译），USB SFR 来自 lib/include/ai8051u_sfr.h。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build usbcdc

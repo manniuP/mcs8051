@@ -6,24 +6,6 @@
 #include <stdio.h>
 #include "cobs.h"
 
-static int decode(const unsigned char *enc, unsigned int n, unsigned char *out, unsigned int out_cap) {
-    unsigned int idx = 0, o = 0;
-    while (idx < n) {
-        unsigned int code = enc[idx++];
-        unsigned int k;
-        if (code == 0) return -1;
-        for (k = 1; k < code; k++) {
-            if (idx >= n || o >= out_cap) return -1;
-            out[o++] = enc[idx++];
-        }
-        if (code < 255 && idx < n) {
-            if (o >= out_cap) return -1;
-            out[o++] = 0;
-        }
-    }
-    return (int)o;
-}
-
 static int roundtrip(const unsigned char *data, unsigned int n) {
     static unsigned char enc[1024];
     static unsigned char dec[1024];
@@ -33,8 +15,8 @@ static int roundtrip(const unsigned char *data, unsigned int n) {
     for (i = 0; i + 1 < m; i++) {
         if (enc[i] == 0) { printf("0x00 inside encoded stream (n=%u)\n", n); return 1; }
     }
-    j = (unsigned int)decode(enc, m - 1, dec, sizeof dec); /* 去掉结尾 0x00 定界符 */
-    if (j != n) { printf("len mismatch in=%u out=%d\n", n, (int)j); return 1; }
+    j = cobs_decode(enc, m - 1, dec, sizeof dec); /* 去掉结尾 0x00 定界符 */
+    if (j != n) { printf("len mismatch in=%u out=%u\n", n, j); return 1; }
     for (i = 0; i < n; i++) {
         if (data[i] != dec[i]) { printf("byte mismatch at %u (n=%u)\n", i, n); return 1; }
     }

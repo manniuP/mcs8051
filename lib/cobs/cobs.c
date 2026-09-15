@@ -79,6 +79,26 @@ unsigned int cobs_encode(const unsigned char *in, unsigned int in_len,
     return cobs_finish(&e);
 }
 
+unsigned int cobs_decode(const unsigned char *in, unsigned int in_len,
+                         unsigned char *out, unsigned int out_cap) {
+    unsigned int i = 0, o = 0;
+    while (i < in_len) {
+        unsigned int code = in[i++];
+        unsigned int k;
+        if (code == 0) return 0;              /* COBS 流内不合法（0x00 只作定界符） */
+        for (k = 1; k < code; k++) {
+            if (i >= in_len || o >= out_cap) return 0;
+            out[o++] = in[i++];
+        }
+        /* code<255 表示还有后继块，隐含一个 0；末块不补（i 已到流尾） */
+        if (code < 255 && i < in_len) {
+            if (o >= out_cap) return 0;
+            out[o++] = 0;
+        }
+    }
+    return o;
+}
+
 /* ---- 日志帧 ---- */
 
 void cobs_log_begin(cobs_enc_t *e, unsigned int id) {

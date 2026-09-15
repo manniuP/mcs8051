@@ -83,6 +83,8 @@
 
 # cobs 主机测试产物
 /lib/cobs/*.exe
+# cordic 主机测试产物
+/lib/cordic/*.exe
 
 # 由源码打包的 SDCC 库（生成物）
 /examples/ai8051u_usb_cdc/*.lib
@@ -93,6 +95,7 @@
 /examples/ai8051u_usb_cdc_cobs/*.asm
 /examples/mcs51_c_cobs/*.asm
 /examples/ai8051u_mdu/*.asm
+/examples/ai8051u_cmd/*.asm
 __pycache__/
 
 # Zig / xmake 构建缓存

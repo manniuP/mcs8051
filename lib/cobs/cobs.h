@@ -55,6 +55,11 @@ unsigned int cobs_finish(cobs_enc_t *e);
 unsigned int cobs_encode(const unsigned char *in, unsigned int in_len,
                          unsigned char *out, unsigned int out_cap);
 
+/* 一次性解码：把编码流 in[0..in_len)（**不含**尾部 0x00 定界符）解进 out（容量 out_cap）；
+ * 返回解出长度，格式非法或 out 容量不足返回 0。 */
+unsigned int cobs_decode(const unsigned char *in, unsigned int in_len,
+                         unsigned char *out, unsigned int out_cap);
+
 /* ---- 日志帧（在 COBS 之上） ---- */
 void         cobs_log_begin(cobs_enc_t *e, unsigned int id);
 void         cobs_log_raw(cobs_enc_t *e, unsigned char b);
