@@ -19,14 +19,30 @@ MDU mul=2468ACF0 div=05555555 mod=00000001 sq=00FFE001
 ```
 预期：`0x12345678*2=0x2468ACF0`、`0x10000000/3=0x05555555`(余 1)、`4095*4095=0x00FFE001`，均一致。
 
-## 运行期自校验版（`main.c`，**待重烧验证**）
+## 运行期自校验版（`main.c`）——**真机通过（2026-09-16）**
 
 为避免「常量参数被编译器在编译期算掉、MDU 没真跑」，`main.c` 改为：
-- 操作数放 `volatile unsigned long` 且随循环递变（运行期，无法折叠）；
-- 对每组用 MDU 算 `p=mul、q=div、r=mod`，再回验 `mul(div(a,b),b)+mod(a,b)==a`；
-- 打印每组 `PASS/FAIL` 与 `pass=/fail=` 计数，另做一组 volatile 已知答案。
+- 操作数放 `volatile` 且随循环递变（运行期，无法折叠）；
+- 无符号：对每组用 MDU 算 `p=mul、q=div、r=mod`，回验 `mul(div(a,b),b)+mod(a,b)==a`；
+- 有符号：与 C 的 `/`、`%`（SDCC 软件参考）逐组比对。
 
-预期：8 组全 `PASS`、`pass=08 fail=00`；`mul=2468ACF0 div=05555555 mod=00000001 sq=00FFE001`。
+真机输出（AI8051U-34K64，115200）：
+
+```
+BOOT!!! AI8051U MDU
+alive
+MDU runtime test
+i=00 p=02040608 q=00810182 r=00000000 PASS
+...
+i=07 p=3C454E53 q=0D62D4B8 r=00000003 PASS
+pass=08 fail=00
+mul=2468ACF0 div=05555555 mod=00000001 sq=00FFE001
+s00 q=05555555 r=00000001 PASS
+...
+s05 q=FAAAFB0A r=FFFFFFFF PASS
+signed pass=06 fail=00
+```
+即：无符号 8/8、有符号 6/6 全通过。
 
 ## 为什么这么实现（关键坑）
 

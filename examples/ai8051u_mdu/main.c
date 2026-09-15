@@ -42,7 +42,13 @@ void main(void)
     WDT_CONTR = 0x00;
     uart_init();
 
-    uart_puts("\r\nMDU runtime test\r\n");
+    /* 最早的可观察点：先猛打一串，再 P1.1 闪 3 下（串口/引脚 任一能活就说明在跑）。 */
+    uart_puts("\r\n\r\nBOOT!!! AI8051U MDU\r\n");
+    P1M0 = 0x00; P1M1 = 0x00;      /* P1 准双向 */
+    for (i = 0; i < 6; i++) { P1 ^= 0x02; delay_ms(120); }
+    uart_puts("alive\r\n");
+
+    uart_puts("MDU runtime test\r\n");
 
     va = 0x01020304UL;              /* volatile 种子，运行期读取 */
     for (i = 0; i < 8; i++)
