@@ -412,6 +412,7 @@ const Gen = struct {
             const tag = gen.air.instructions.items(.tag)[@intFromEnum(inst)];
             switch (tag) {
                 .block, .loop => try gen.preallocBlock(inst),
+                .dbg_inline_block => try gen.preallocInlineBlock(inst),
                 .cond_br => {
                     const cb = gen.air.unwrapCondBr(inst);
                     try gen.preallocBody(cb.then_body);
@@ -501,6 +502,25 @@ const Gen = struct {
         }
 
         try gen.preallocBody(block.body);
+    }
+
+    /// 内联块（`inline fn` 被内联后的 `dbg_inline_block`）当作普通 block 处理：
+    /// 登记 block_info（内部 `br` 才有落脚点）并递归其 body。
+    fn preallocInlineBlock(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
+        const start = gen.newLabel();
+        const end = gen.newLabel();
+        try gen.block_info.put(gen.gpa, inst, .{ .start = start, .end = end });
+
+        const blk = gen.air.unwrapDbgBlock(inst);
+        if (blk.ty.hasRuntimeBits(gen.zcu)) {
+            const class = abi.classify(blk.ty, gen.zcu);
+            if (class.is_aggregate or class.size == 0 or class.size > 4) return gen.fail(
+                "mcs backend: inline block result larger than 4 bytes is not implemented yet",
+                .{},
+            );
+            gen.vals[@intFromEnum(inst)] = gen.allocResult(class.size);
+        }
+        try gen.preallocBody(blk.body);
     }
 
     fn preallocArg(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
@@ -987,6 +1007,7 @@ const Gen = struct {
             const tag = gen.air.instructions.items(.tag)[@intFromEnum(inst)];
             switch (tag) {
                 .block, .loop => try gen.emitBlock(inst),
+                .dbg_inline_block => try gen.emitInlineBlock(inst),
                 .cond_br => try gen.emitCondBr(inst),
                 .br => try gen.emitBr(inst),
                 .repeat => try gen.emitRepeat(inst),
@@ -1047,11 +1068,39 @@ const Gen = struct {
 
             .trap, .breakpoint, .unreach => try gen.addTrap(),
 
+            .assembly => try gen.emitAsm(inst),
+
             .ret_load => return gen.fail("mcs backend: ret_load is not implemented yet", .{}),
             .ret_ptr => return gen.fail("mcs backend: return-by-pointer is not implemented yet", .{}),
             .ret_addr => return gen.fail("mcs backend: @returnAddress is not implemented yet", .{}),
 
             else => return gen.fail("mcs backend: unimplemented AIR tag '{s}'", .{@tagName(tag)}),
+        }
+    }
+
+    /// 内联汇编（`asm volatile ("...")`）。
+    /// 目前只支持**无操作数**（inputs/outputs 均为空）的形式：把 asm 源文本原样写进函数体，
+    /// 由 sdas251 汇编。带输入/输出约束的形式会明确报错（后续可扩展）。
+    fn emitAsm(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
+        const ua = gen.air.unwrapAsm(inst);
+        if (ua.outputs.len != 0 or ua.inputs.len != 0) {
+            return gen.fail("mcs backend: inline asm with operands is not implemented yet", .{});
+        }
+        const ty = gen.air.typeOfIndex(inst, &gen.zcu.intern_pool);
+        if (ty.hasRuntimeBits(gen.zcu)) {
+            return gen.fail("mcs backend: inline asm with outputs is not implemented yet", .{});
+        }
+        const src = ua.source;
+        if (src.len == 0) return;
+        // ASxxxx 中第 1 列的 token 会被当作标签；逐行加一个制表符缩进再原样输出。
+        var lines = std.mem.splitScalar(u8, src, '\n');
+        while (lines.next()) |line| {
+            var l = line;
+            if (l.len > 0 and l[l.len - 1] == '\r') l = l[0 .. l.len - 1];
+            if (l.len == 0) continue;
+            const indented = try std.fmt.allocPrint(gen.gpa, "\t{s}", .{l});
+            try gen.mir.addOwned(gen.gpa, indented);
+            try gen.mir.addRaw(gen.gpa, indented);
         }
     }
 
@@ -1061,6 +1110,13 @@ const Gen = struct {
         if (tag == .loop) try gen.mir.addLabel(gen.gpa, info.start);
         const block = gen.air.unwrapBlock(inst);
         try gen.emitBody(block.body);
+        try gen.mir.addLabel(gen.gpa, info.end);
+    }
+
+    fn emitInlineBlock(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
+        const info = gen.block_info.get(inst).?;
+        const blk = gen.air.unwrapDbgBlock(inst);
+        try gen.emitBody(blk.body);
         try gen.mir.addLabel(gen.gpa, info.end);
     }
 
