@@ -1,7 +1,7 @@
 # ai8051u_usb_cdc_cobs —— COBS 日志帧走 USB-CDC
 
 把 `lib/cobs` 的轻量日志帧**直接从 USB-CDC（虚拟串口）输出**，摆脱 UART 线；
-主机沿用 `examples/ai8051u_zig_log/decode.ps1` 解码（帧格式相同）。
+主机用 `examples/ai8051u_zig_log/decode.py`（或等价的 `decode.ps1`）解码（帧格式相同）。
 
 ## 构建 / 状态
 
@@ -11,11 +11,15 @@ xmake f --mcs_arch=mcs251
 xmake build usbcdcobs        # -> examples/ai8051u_usb_cdc_cobs/usb_cdc_cobs.ihx
 ```
 
-- **当前状态：编译 / 链接通过**（CSEG ≈ 15702 B，XSEG 820 B，< 64KB）。
-- **真机验证：待做**（见 `docs/交接-2026-09-15.md` §11）。下次推进时：
-  关掉 AiCube → 枚举 `VID_34BF&PID_FF02`（`AIC USB Serial`）→
-  `powershell -File ..\ai8051u_zig_log\decode.ps1 -Port <CDC口>` 应能解出
-  `count`（递变）与 `msg "hello"`。
+- **状态：编译/链接通过 + 真机通过**（CSEG ≈16.4KB，XSEG 820 B，< 64KB）。
+- **真机结果（AI8051U-34K64，2026-09-16）**：烧录后板子 USB 枚举为
+  `VID_34BF&PID_FF02`（`AIC USB Serial`）→ COM 口；主机解码
+  **`frames ok=222 bad=0`**，`count` 从 14 递变到 124、每帧后跟 `msg "hello"`。
+- **复现**（关掉 AiCube 释放 CDC 口后）：
+  ```powershell
+  python ..\ai8051u_zig_log\decode.py -p COM10 -s 5
+  # 或（PS 版）：powershell -File ..\ai8051u_zig_log\decode.ps1 -Port COM10
+  ```
 
 ## 实现要点
 
