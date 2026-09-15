@@ -715,3 +715,20 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\l
 
 仍缺：**全局变量**（`CodeGen` 的 `indirect memory access` + `src/link/Asx.zig:updateNav`
 只打 TODO）、切片、`@ptrFromInt(addr).*` 单元素指针。
+
+## mcs51/Zig 全局变量（xdata）实现（2026-09-15）
+
+- `CodeGen.zig`：新增 `globalSymbolOf`（识别 `.ptr→.nav` / `.@"extern"` 的编译期数据符号）
+  与 `derefSymbolRead/Write`（`mov dptr,#_sym` + `movx`）；在 `emitLoad`/`emitStore`
+  标量路径接入。`encode.zig` 增加 `imm_symbol` 操作数（输出 `#_sym`）。
+- `src/link/Asx.zig`：`updateNav` 不再只打 TODO——对**已定义**的数据 nav 输出
+  `.area XSEG (XDATA)` + `.globl _name` + `_name: .ds <size>`（**零初始化**）。
+- 验证（ucsim）：
+  - extern（C 定义、Zig 读写）：`gv` 5→6（`inc_gv`/`get_gv`）；
+  - Zig 定义（C 读写）：`export var counter`，C 侧 `counter`/`bump()` 一致；
+  - `projects/at89c52_sim` 增至 **标量 + 指针 + 多参数 + 全局** 全通过。
+- 限制：非零初值（`var x = 42`）暂不生效（xdata 初始化需 XINIT + 启动拷贝，
+  Zig 后端不发启动片段）。
+
+至此 8 位（mcs51）C↔Zig 互操作覆盖：单标量、多参数、xdata 指针、全局变量。仍缺：
+切片、`@ptrFromInt(addr).*` 单元素指针。

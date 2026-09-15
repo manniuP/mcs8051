@@ -31,3 +31,12 @@ export fn sum4(buf: [*]const u8) u8 {
 export fn add3(a: u8, b: u8, c: u8) u8 {
     return a +% b +% c;
 }
+
+/// Zig 定义的全局变量（放 xdata），供 C 侧读写（验证全局符号互操作）。
+export var counter: u8 = 0;
+
+/// 自增全局计数并返回（验证 Zig 定义 + C 读取的全局一致）。
+export fn bump() u8 {
+    counter +%= 1;
+    return counter;
+}

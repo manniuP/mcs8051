@@ -23,6 +23,8 @@ __sfr __at(0x90) P1;                 /* 标准 P1，仅用于点亮标记 */
 extern u8 led_next(u8 cur);          /* Zig 提供（led.zig） */
 extern u8 sum4(__xdata const u8 *buf);
 extern u8 add3(u8 a, u8 b, u8 c);
+extern u8 counter;                   /* Zig 定义的全局 */
+extern u8 bump(void);
 
 __xdata __at(0x8000) volatile u8 status;
 __xdata __at(0x8001) volatile u8 failcode;
@@ -57,6 +59,15 @@ void main(void)
     /* 多参数互操作：add3(1,2,3)=6（C 需 --stack-auto）。 */
     if (failcode == 0 && add3(1, 2, 3) != 6) {
         failcode = 0x30;
+    }
+
+    /* 全局变量互操作：Zig 定义 counter，C 读写；bump() 自增返回。 */
+    counter = 0;
+    if (failcode == 0 && bump() != 1) {
+        failcode = 0x40;
+    }
+    if (failcode == 0 && counter != 1) {
+        failcode = 0x41;
     }
 
     status = (failcode == 0) ? 0xAA : 0x55;
