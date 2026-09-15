@@ -1228,3 +1228,67 @@ target("ccobs51")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
+
+-- mdu：MDU（32 位硬件乘除单元，手册 §36）真机验证。算已知结果经 UART1(115200) 打印。
+-- 预期：mul=0x2468ACF0 div=0x05555555 mod=0x00000001 sq=0x00FFE001。
+-- 仿真不建模 → 只能真机。用法：xmake f --mcs_arch=mcs251; xmake build mdu
+target("mdu")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("mdu 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u_mdu")
+        local incdir = path.join(projdir, "lib/include")
+        local haldir = path.join(projdir, "lib/stc-hal")
+        local uartdir = path.join(projdir, "lib/uart251")
+        local mdudir = path.join(projdir, "lib/mdu")
+        local sdcc = get_config("sdcc251")
+        if not os.isfile(sdcc) then
+            raise("找不到工具：" .. sdcc .. "（用 --sdcc251 覆盖路径）")
+        end
+
+        local main_c   = path.join(scriptdir, "main.c")
+        local mdu_c    = path.join(mdudir, "mdu.c")
+        local uart_c   = path.join(uartdir, "uart251.c")
+        local delay_c  = path.join(haldir, "AI8051U_Delay.c")
+        local main_rel = path.join(scriptdir, "main.rel")
+        local mdu_rel  = path.join(scriptdir, "mdu.rel")
+        local uart_rel = path.join(scriptdir, "uart251.rel")
+        local delay_rel = path.join(scriptdir, "delay.rel")
+        local ihx      = path.join(scriptdir, "mdu.ihx")
+        local cflags   = {"-mmcs251", "--model-large", "-DUART_BAUD=115200",
+                          "-I", incdir, "-I", haldir, "-I", uartdir, "-I", mdudir}
+
+        print("[1/2] C -> rel   : main.c mdu.c uart251.c AI8051U_Delay.c")
+        os.vrunv(sdcc, table.join(cflags, {"-c", main_c, "-o", main_rel}))
+        os.vrunv(sdcc, table.join(cflags, {"-c", mdu_c, "-o", mdu_rel}))
+        os.vrunv(sdcc, table.join(cflags, {"-c", uart_c, "-o", uart_rel}))
+        os.vrunv(sdcc, table.join(cflags, {"-c", delay_c, "-o", delay_rel}))
+
+        print("[2/2] link -> ihx: mdu.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        main_rel, mdu_rel, uart_rel, delay_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_mdu")
+        for _, n in ipairs({"main.rel", "mdu.rel", "uart251.rel", "delay.rel", "main.asm", "mdu.asm",
+                            "mdu.ihx", "mdu.lk", "mdu.map", "mdu.mem", "mdu.lst", "mdu.rst", "mdu.sym"}) do
+            os.tryrm(path.join(scriptdir, n))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 mdu")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
