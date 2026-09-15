@@ -119,6 +119,75 @@ inline fn hexDigit(n: u8) u8 {
     return if (n < 10) @as(u8, '0') + n else @as(u8, 'a') + (n - 10);
 }
 
+// ---------------------------------------------------------------------------
+// 轻量二进制日志（defmt 风格；主机端按同一张 id→类型表解码）
+// ---------------------------------------------------------------------------
+
+/// 日志帧头：`0x7E, id_lo, id_hi`，返回校验初值（id 的 XOR）。
+inline fn logHead(comptime id: u16) u8 {
+    uartPutc(0x7e);
+    const il: u8 = @truncate(id);
+    const ih: u8 = @truncate(id >> 8);
+    uartPutc(il);
+    uartPutc(ih);
+    return il ^ ih;
+}
+
+inline fn logP8(ck: *u8, v: u8) void {
+    uartPutc(v);
+    ck.* ^= v;
+}
+
+inline fn logP16(ck: *u8, v: u16) void {
+    logP8(ck, @truncate(v));
+    logP8(ck, @truncate(v >> 8));
+}
+
+inline fn logP32(ck: *u8, v: u32) void {
+    logP8(ck, @truncate(v));
+    logP8(ck, @truncate(v >> 8));
+    logP8(ck, @truncate(v >> 16));
+    logP8(ck, @truncate(v >> 24));
+}
+
+/// 轻量二进制日志（defmt 风格）：帧 = `0x7E, id_lo, id_hi, 参数…, XOR 校验`。
+///
+/// `id` 是每个日志点的编译期常量；参数按类型小端编码（u8=1、u16=2、u32=4 字节）。
+/// 主机端按同一张 id→类型表解码（见 `projects/ai8051u_zig_log/decode.ps1`）。
+/// 后端不支持 tuple，故按元数提供若干重载；都是 `inline`（绕开多参数 ABI）。
+///
+/// 示例：`logU16(0x0002, count);` / `logU8U8(0x0003, 0xab, 0xcd);`
+pub inline fn log0(comptime id: u16) void {
+    uartPutc(logHead(id));
+}
+pub inline fn logU8(comptime id: u16, a: u8) void {
+    var ck = logHead(id);
+    logP8(&ck, a);
+    uartPutc(ck);
+}
+pub inline fn logU16(comptime id: u16, a: u16) void {
+    var ck = logHead(id);
+    logP16(&ck, a);
+    uartPutc(ck);
+}
+pub inline fn logU32(comptime id: u16, a: u32) void {
+    var ck = logHead(id);
+    logP32(&ck, a);
+    uartPutc(ck);
+}
+pub inline fn logU8U8(comptime id: u16, a: u8, b: u8) void {
+    var ck = logHead(id);
+    logP8(&ck, a);
+    logP8(&ck, b);
+    uartPutc(ck);
+}
+pub inline fn logU16U16(comptime id: u16, a: u16, b: u16) void {
+    var ck = logHead(id);
+    logP16(&ck, a);
+    logP16(&ck, b);
+    uartPutc(ck);
+}
+
 /// 写 SFR：`mov dir8,#imm`。`addr` 为 SFR 字节地址（0x80–0xFF）。
 ///
 /// 示例：`sfrWrite(0x90, 0xfe); // P1 = 0xfe`

@@ -57,6 +57,8 @@
 !/projects/ai8051u_zig_mem/crt0.asm
 /projects/ai8051u_zig_buzz/*.asm
 !/projects/ai8051u_zig_buzz/crt0.asm
+/projects/ai8051u_zig_log/*.asm
+!/projects/ai8051u_zig_log/crt0.asm
 # 例外：手工编写的参考 asm（非构建产物）
 !/projects/ai8051u_ptrtest/ptrtest_correct.asm
 !/projects/ai8051u_ptrtest/test_dr28.asm
