@@ -2157,8 +2157,25 @@ const Gen = struct {
         return @truncate(addr);
     }
 
+    /// 固定地址是否落在 8 位直址区（SFR 0x80–0xFF / 低 RAM 0x00–0x7F）。
+    /// 直址用 `mov a,dir8` / `mov dir8,a`，而非 MOVX 的 xdata。
+    fn isDirectAddr(addr: u32, size: u32) bool {
+        return size >= 1 and addr <= 0xFF and addr + size - 1 <= 0xFF and addr >= 0x80;
+    }
+
     /// 读固定 xdata 地址 `addr` 的 `size` 字节到帧槽 `dst_disp`。
     fn derefFixedRead(gen: *Gen, addr: u32, size: u32, dst_disp: i32) codegen.CodeGenError!void {
+        if (isDirectAddr(addr, size)) {
+            var j: u32 = 0;
+            while (j < size) : (j += 1) {
+                try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .dir8 = .{ .value = addr + j } } });
+                try gen.addInst(.mov, &.{
+                    gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                    .{ .reg = .a },
+                });
+            }
+            return;
+        }
         try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm = .{ .value = @intCast(addr & 0xffff), .bits = 16 } } });
         var j: u32 = 0;
         while (j < size) : (j += 1) {
@@ -2173,6 +2190,14 @@ const Gen = struct {
 
     /// 把 `src` 的 `size` 字节写固定 xdata 地址 `addr`。
     fn derefFixedWrite(gen: *Gen, addr: u32, src: Loc, size: u32) codegen.CodeGenError!void {
+        if (isDirectAddr(addr, size)) {
+            var j: u32 = 0;
+            while (j < size) : (j += 1) {
+                try gen.loadByteToA(src, j, size);
+                try gen.addInst(.mov, &.{ .{ .dir8 = .{ .value = addr + j } }, .{ .reg = .a } });
+            }
+            return;
+        }
         try gen.addInst(.mov, &.{ .{ .reg = .dptr }, .{ .imm = .{ .value = @intCast(addr & 0xffff), .bits = 16 } } });
         var j: u32 = 0;
         while (j < size) : (j += 1) {
