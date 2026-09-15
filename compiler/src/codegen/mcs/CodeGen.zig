@@ -292,13 +292,13 @@ const Gen = struct {
             if (gen.arch == .mcs251) {
                 if (try gen.globalSymbolOf(ref)) |g| {
                     if (g.off == 0) {
-                        const tmp = gen.allocFrame(3);
+                        const tmp = gen.allocFrame(gen.ptrBytes());
                         try gen.materializeConstAddr(g.name, 0, tmp);
                         return .{ .frame = tmp };
                     }
                 }
                 if (gen.fixedAddrOf(ref)) |a| {
-                    const tmp = gen.allocFrame(3);
+                    const tmp = gen.allocFrame(gen.ptrBytes());
                     try gen.materializeConstAddr(null, a, tmp);
                     return .{ .frame = tmp };
                 }
@@ -318,7 +318,7 @@ const Gen = struct {
                     "mcs backend: pointer values on MCS-51 are not implemented yet",
                     .{},
                 );
-                const tmp = gen.allocFrame(3);
+                const tmp = gen.allocFrame(gen.ptrBytes());
                 try gen.materializePtrAddr(p.base, p.off);
                 try gen.storeDr28ToFrame(tmp, 3);
                 return .{ .frame = tmp };
@@ -328,7 +328,7 @@ const Gen = struct {
                     "mcs backend: pointer values on MCS-51 are not implemented yet",
                     .{},
                 );
-                const tmp = gen.allocFrame(3);
+                const tmp = gen.allocFrame(gen.ptrBytes());
                 try gen.materializePtrAddr(s.base, s.off);
                 try gen.storeDr28ToFrame(tmp, 3);
                 return .{ .frame = tmp };
@@ -706,7 +706,7 @@ const Gen = struct {
             "mcs backend: runtime index is wider than a pointer",
             .{},
         );
-        const addr = gen.allocFrame(3);
+        const addr = gen.allocFrame(gen.ptrBytes());
         if (try gen.globalSymbolOf(base_ref)) |g| {
             if (g.off != 0) return gen.fail(
                 "mcs backend: runtime index on an offset global array is not implemented yet",
@@ -787,7 +787,7 @@ const Gen = struct {
                     // inst.addr = new_addr（新分配的 3 字节槽，存物化后的地址）
                     // inst.base_addr = pr.addr（源指针 3 字节地址的帧槽）
                     // inst.off = 常量偏移（编译期算好）
-                    const new_addr = gen.allocFrame(3);
+                    const new_addr = gen.allocFrame(gen.ptrBytes());
                     gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
                         .addr = new_addr,
                         .base_addr = pr.addr,
@@ -817,7 +817,7 @@ const Gen = struct {
                 "mcs backend: runtime index is wider than a pointer",
                 .{},
             );
-            const new_addr = gen.allocFrame(3);
+            const new_addr = gen.allocFrame(gen.ptrBytes());
             gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
                 .addr = new_addr,
                 .base_addr = base.ptr_rt.addr,
@@ -878,7 +878,7 @@ const Gen = struct {
 
         // 编译期指针：全局/外部符号或 `@ptrFromInt` 固定地址 + 字段偏移。
         if (info.operand.toInterned() != null) {
-            const addr = gen.allocFrame(3);
+            const addr = gen.allocFrame(gen.ptrBytes());
             if (try gen.globalSymbolOf(info.operand)) |g| {
                 if (g.space != .xdata) return gen.fail(
                     "mcs backend: struct field pointer into a non-xdata global is not implemented yet",
@@ -910,7 +910,7 @@ const Gen = struct {
                 .off = p.off + field_off,
             } },
             .ptr_rt => |pr| {
-                const new_addr = gen.allocFrame(3);
+                const new_addr = gen.allocFrame(gen.ptrBytes());
                 gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
                     .addr = new_addr,
                     .base_addr = pr.addr,
@@ -923,7 +923,7 @@ const Gen = struct {
                 if (op_tag == .alloc) {
                     gen.vals[@intFromEnum(inst)] = .{ .ptr = .{ .base = d, .off = field_off } };
                 } else {
-                    const new_addr = gen.allocFrame(3);
+                    const new_addr = gen.allocFrame(gen.ptrBytes());
                     gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
                         .addr = new_addr,
                         .base_addr = d,
@@ -999,7 +999,7 @@ const Gen = struct {
                 return;
             }
         }
-        gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{ .addr = gen.allocFrame(3) } };
+        gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{ .addr = gen.allocFrame(gen.ptrBytes()) } };
     }
 
     /// `.slice_elem_ptr`：描述符折叠为 `.ptr`/`.ptr_dyn`；否则物化为 `ptr_rt`。
@@ -1040,7 +1040,7 @@ const Gen = struct {
                 return;
             }
         }
-        gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{ .addr = gen.allocFrame(3) } };
+        gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{ .addr = gen.allocFrame(gen.ptrBytes()) } };
     }
 
     /// `.ptr_add(ptr, i)`：编译期下标调整偏移；运行期下标在有界视图上展开。
@@ -1111,7 +1111,7 @@ const Gen = struct {
                         .frame => |d| d,
                         else => unreachable,
                     };
-                    const new_addr = gen.allocFrame(3);
+                    const new_addr = gen.allocFrame(gen.ptrBytes());
                     gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
                         .addr = new_addr,
                         .base_addr = base_addr,
@@ -1121,7 +1121,7 @@ const Gen = struct {
                     } };
                     return;
                 }
-                gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{ .addr = gen.allocFrame(3) } };
+                gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{ .addr = gen.allocFrame(gen.ptrBytes()) } };
             },
             else => return gen.fail("mcs backend: unsupported pointer base", .{}),
         }
@@ -1779,10 +1779,6 @@ const Gen = struct {
         switch (gen.vals[@intFromEnum(inst)]) {
             .ptr_rt => |pr| {
                 if (pr.run_idx != null) {
-                    if (gen.arch != .mcs251) return gen.fail(
-                        "mcs backend: runtime index on MCS-51 is not implemented yet",
-                        .{},
-                    );
                     try gen.emitAbsElemPtr(pr);
                     return;
                 }
@@ -1790,11 +1786,29 @@ const Gen = struct {
                     // 无运行期基址：参数 ptr_rt 直接用 addr；编译期符号/固定地址 + 偏移
                     // （结构体字段指针）需在此物化。
                     if (pr.sym.len == 0 and !pr.use_imm) return;
-                    if (gen.arch != .mcs251) return gen.fail(
-                        "mcs backend: struct field pointer on MCS-51 is not implemented yet",
-                        .{},
+                    if (gen.arch == .mcs251) {
+                        try gen.emitConstPtrPlusOff(pr);
+                        return;
+                    }
+                    // MCS-51：编译期基址（symbol/固定地址）+ 常量偏移 -> 2 字节 LE 指针。
+                    const ps = gen.ptrBytes();
+                    try gen.materializeConstAddr(
+                        if (pr.sym.len != 0) pr.sym else null,
+                        pr.imm_base,
+                        pr.addr,
                     );
-                    try gen.emitConstPtrPlusOff(pr);
+                    if (pr.off != 0) {
+                        const off: u32 = @intCast(pr.off);
+                        try gen.loadPtrToDptr(.{ .frame = pr.addr }, ps);
+                        try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .dpl } });
+                        try gen.addInst(.add, &.{ .{ .reg = .a }, .{ .imm = .{ .value = @intCast(off & 0xff), .bits = 8 } } });
+                        try gen.addInst(.mov, &.{ .{ .reg = .dpl }, .{ .reg = .a } });
+                        try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .dph } });
+                        try gen.addInst(.addc, &.{ .{ .reg = .a }, .{ .imm = .{ .value = @intCast((off >> 8) & 0xff), .bits = 8 } } });
+                        try gen.addInst(.mov, &.{ .{ .reg = .dph }, .{ .reg = .a } });
+                        try gen.addInst(.mov, &.{ gen.frameOperand(pr.addr + 0), .{ .reg = .dpl } });
+                        try gen.addInst(.mov, &.{ gen.frameOperand(pr.addr + 1), .{ .reg = .dph } });
+                    }
                     return;
                 }
                 if (gen.arch == .mcs51) {
@@ -1859,7 +1873,7 @@ const Gen = struct {
 
     /// 物化「编译期基址（全局符号 / 固定地址）+ `off`」到 `pr.addr` 的 3 字节绝对地址。
     fn emitConstPtrPlusOff(gen: *Gen, pr: anytype) codegen.CodeGenError!void {
-        const tmp = gen.allocFrame(3);
+        const tmp = gen.allocFrame(gen.ptrBytes());
         try gen.materializeConstAddr(
             if (pr.sym.len != 0) pr.sym else null,
             pr.imm_base,
@@ -1905,23 +1919,24 @@ const Gen = struct {
     }
 
     /// 物化 `.ptr_rt` 的绝对 xdata 地址 `base + idx*elem_size`（`pr.run_idx` 为下标帧槽）。
-    /// 序列对齐 SDCC 的 mcs251 输出；`clr a` 不清 CY，故进位可跨字节传递。
-    /// `elem_size > 1` 时先做多字节缩放：逐字节 `mul ab`（下标字节 × 元素大小），
-    /// 进位留在 r7（`t_hi + carry` 必 ≤ 0xFF，8 位够用），结果先写进 `pr.addr`，
-    /// 再把基址叠加进去（避免额外占帧槽）。
+    /// 按 `ptrBytes()` 参数化：mcs251 为 3 字节、mcs51 为 2 字节；端序由 `slotByte` 处理。
+    /// `clr a` 不清 CY，故进位可跨字节传递。`elem_size > 1` 时先逐字节 `mul ab` 缩放
+    /// （下标字节 × 元素大小），进位留 r7（`t_hi + carry` 必 ≤ 0xFF），结果先写 `pr.addr`，
+    /// 再叠加基址（避免额外占帧槽）。
     fn emitAbsElemPtr(gen: *Gen, pr: anytype) codegen.CodeGenError!void {
+        const ps = gen.ptrBytes();
         if (pr.elem_size != 1) {
             if (pr.elem_size > 255) return gen.fail(
                 "mcs backend: scaled runtime index element size must be <= 255",
                 .{},
             );
-            // 乘积 -> pr.addr（小端逻辑字节），r7 存进位。
+            // 乘积 -> pr.addr（逻辑字节），r7 存进位。
             try gen.addInst(.mov, &.{
                 .{ .reg = .{ .r = 7 } },
                 .{ .imm = .{ .value = 0, .bits = 8 } },
             });
             var m: u32 = 0;
-            while (m < 3) : (m += 1) {
+            while (m < ps) : (m += 1) {
                 if (m < pr.idx_size) {
                     try gen.loadByteToA(.{ .frame = pr.run_idx.? }, m, pr.idx_size);
                 } else {
@@ -1933,7 +1948,7 @@ const Gen = struct {
                 });
                 try gen.addInst(.mul, &.{.{ .reg = .ab }}); // A=t_lo, B=t_hi
                 try gen.addInst(.add, &.{ .{ .reg = .a }, .{ .reg = .{ .r = 7 } } });
-                try gen.storeA(.{ .frame = pr.addr }, m, 3);
+                try gen.storeA(.{ .frame = pr.addr }, m, ps);
                 try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .b } });
                 try gen.addInst(.addc, &.{
                     .{ .reg = .a },
@@ -1943,24 +1958,24 @@ const Gen = struct {
             }
             // 把基址叠加到 pr.addr（原地）。
             var k2: u32 = 0;
-            while (k2 < 3) : (k2 += 1) {
-                try gen.loadByteToA(.{ .frame = pr.addr }, k2, 3);
+            while (k2 < ps) : (k2 += 1) {
+                try gen.loadByteToA(.{ .frame = pr.addr }, k2, ps);
                 const mnem2: encode.Mnemonic = if (k2 == 0) .add else .addc;
                 if (pr.base_addr != 0) {
                     try gen.addInst(.mov, &.{
                         .{ .reg = .{ .r = 7 } },
-                        gen.frameOperand(pr.base_addr + @as(i32, @intCast(2 - k2))),
+                        gen.frameOperand(gen.slotByte(pr.base_addr, k2, ps)),
                     });
                     try gen.addInst(mnem2, &.{ .{ .reg = .a }, .{ .reg = .{ .r = 7 } } });
                 } else {
                     try gen.addInst(mnem2, &.{ .{ .reg = .a }, baseByteOperand(pr, k2) });
                 }
-                try gen.storeA(.{ .frame = pr.addr }, k2, 3);
+                try gen.storeA(.{ .frame = pr.addr }, k2, ps);
             }
             return;
         }
         var k: u32 = 0;
-        while (k < 3) : (k += 1) {
+        while (k < ps) : (k += 1) {
             if (k < pr.idx_size) {
                 try gen.loadByteToA(.{ .frame = pr.run_idx.? }, k, pr.idx_size);
             } else {
@@ -1968,24 +1983,26 @@ const Gen = struct {
             }
             const mnem: encode.Mnemonic = if (k == 0) .add else .addc;
             if (pr.base_addr != 0) {
-                // 运行期指针基址：base 的 3 字节在帧槽（大端：逻辑字节 k 在 base+2-k）。
+                // 运行期指针基址：base 指针的字节由 slotByte 处理端序。
                 try gen.addInst(.mov, &.{
                     .{ .reg = .{ .r = 7 } },
-                    gen.frameOperand(pr.base_addr + @as(i32, @intCast(2 - k))),
+                    gen.frameOperand(gen.slotByte(pr.base_addr, k, ps)),
                 });
                 try gen.addInst(mnem, &.{ .{ .reg = .a }, .{ .reg = .{ .r = 7 } } });
             } else {
                 try gen.addInst(mnem, &.{ .{ .reg = .a }, baseByteOperand(pr, k) });
             }
-            try gen.storeA(.{ .frame = pr.addr }, k, 3);
+            try gen.storeA(.{ .frame = pr.addr }, k, ps);
         }
     }
 
-    /// 把编译期指针基址（全局符号 `sym` 或固定地址 `imm`）物化为 `dst` 处的帧内 3 字节
-    /// 绝对地址（大端，与 `.ptr_rt` 约定一致）。
+    /// 把编译期指针基址（全局符号 `sym` 或固定地址 `imm`）物化为 `dst` 处的帧内
+    /// `ptrBytes()` 字节绝对地址（端序与 `.ptr_rt` 约定一致：mcs251 大端 3 字节 /
+    /// mcs51 小端 2 字节，由 `slotByte` 处理）。
     fn materializeConstAddr(gen: *Gen, sym: ?[]const u8, imm: u32, dst: i32) codegen.CodeGenError!void {
+        const ps = gen.ptrBytes();
         var k: u32 = 0;
-        while (k < 3) : (k += 1) {
+        while (k < ps) : (k += 1) {
             const op: encode.Operand = if (sym) |s| switch (k) {
                 0 => .{ .imm_symbol = .{ .symbol = s } },
                 1 => .{ .imm_symbol_mid = .{ .symbol = s } },
@@ -1995,7 +2012,7 @@ const Gen = struct {
                 .bits = 8,
             } };
             try gen.addInst(.mov, &.{ .{ .reg = .a }, op });
-            try gen.storeA(.{ .frame = dst }, k, 3);
+            try gen.storeA(.{ .frame = dst }, k, ps);
         }
     }
 
