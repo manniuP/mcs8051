@@ -32,15 +32,23 @@ option("sdcc")
     set_description("SDCC 主驱动器路径（mcs51 模式用）")
 
 option("zig")
-    set_default(os.getenv("ZIG") or path.join(os.projectdir(), "tools/zig-bootstrap/zig.exe"))
+    set_default(os.getenv("ZIG") or
+        (os.isfile(path.join(os.projectdir(), "zig/zig-out/bin/zig.exe"))
+            and path.join(os.projectdir(), "zig/zig-out/bin/zig.exe"))
+        or path.join(os.projectdir(), "tools/zig-bootstrap/zig.exe"))
     set_showmenu(true)
-    set_description("自举 zig 编译器路径")
+    set_description("自举 zig 编译器路径（优先 zig/zig-out/bin/zig.exe，退回 tools/zig-bootstrap）")
 
 option("sdcc251")
     set_default(os.getenv("SDCC251") or path.join(os.projectdir(),
         "sdcc-mcs251-windows-x64/sdcc-mcs251/bin/sdcc.exe"))
     set_showmenu(true)
     set_description("mcs251 模式下的 sdcc.exe（预编译包路径）")
+
+option("python")
+    set_default(os.getenv("PYTHON") or "python")
+    set_showmenu(true)
+    set_description("Python 解释器（跑 tools/fix_mcs_labels.py，修局部标签重名）")
 
 target("blink")
     set_kind("phony")
@@ -100,6 +108,13 @@ target("blink")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", "-target", target_flag, "-femit-bin=" .. led_asm, led_zig})
+
+        -- [2.5/4] 修局部标签重名：后端每个函数从 0 重新编号 L<n>，同一 .asm 内
+        -- 多个含分支的函数会撞名（sdas 报 multiple definitions / phase error）。
+        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
+        if os.isfile(fixer) then
+            os.vrunv(get_config("python"), {fixer, led_asm})
+        end
 
         -- [3/4] .asm -> .rel
         print(("[3/4] asm -> rel  : %s"):format(path.filename(led_asm)))
@@ -178,6 +193,12 @@ target("ptrtest")
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. zig_asm, zig_src})
 
+        -- [2.5/4] 修局部标签重名（同 blink；见 tools/fix_mcs_labels.py）
+        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
+        if os.isfile(fixer) then
+            os.vrunv(get_config("python"), {fixer, zig_asm})
+        end
+
         -- [3/4] .asm -> .rel
         print("[3/4] asm -> rel : ptrtest.asm")
         os.vrunv(sdas, {"-plosgffw", zig_rel, zig_asm})
@@ -203,6 +224,84 @@ target("ptrtest")
         local ihx = target:get("targetfile")
         if not ihx or not os.isfile(ihx) then
             raise("还没构建，先 xmake build --mcs-arch=mcs251 ptrtest")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- simtest：AT89C52 风格的自检测试（C + Zig），可在 ucsim(s51) 软件仿真里跑。
+-- 只用标准 8051 SFR，结果写 XRAM（0x0000 status=0xAA 通过 / 0x0001 failcode）。
+-- 用法：xmake build --mcs-arch=mcs51 simtest
+target("simtest")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs51" then
+            raise("simtest 仅支持 mcs51（加 --mcs-arch=mcs51）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "projects/at89c52_sim")
+
+        local sdcc = get_config("sdcc")
+        local sdas = path.join(path.directory(sdcc), "sdas8051.exe")
+        local zig = get_config("zig")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool .. "（用 --sdcc / --zig 覆盖路径）")
+            end
+        end
+
+        local main_c   = path.join(scriptdir, "main.c")
+        local zig_src  = path.join(scriptdir, "led.zig")
+        local main_rel = path.join(scriptdir, "main.rel")
+        local zig_asm  = path.join(scriptdir, "led.asm")
+        local zig_rel  = path.join(scriptdir, "led.rel")
+        local ihx      = path.join(scriptdir, "simtest.ihx")
+
+        -- [1/4] C -> .rel（--stack-auto：与 Zig 的栈传参约定对齐，支持多参数）
+        print("[1/4] C -> rel   : main.c")
+        os.vrunv(sdcc, {"-mmcs51", "--model-large", "--stack-auto", "-c", main_c, "-o", main_rel})
+
+        -- [2/4] Zig -> .asm
+        print("[2/4] Zig -> asm : led.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "zig/lib"))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", "-target", "mcs51-freestanding", "-femit-bin=" .. zig_asm, zig_src})
+
+        -- [2.5/4] 修局部标签重名
+        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
+        if os.isfile(fixer) then
+            os.vrunv(get_config("python"), {fixer, zig_asm})
+        end
+
+        -- [3/4] .asm -> .rel
+        print("[3/4] asm -> rel : led.asm")
+        os.vrunv(sdas, {"-plosgffw", zig_rel, zig_asm})
+
+        -- [4/4] link -> .ihx
+        print("[4/4] link -> ihx: simtest.ihx")
+        os.vrunv(sdcc, {"-mmcs51", "--model-large", "--stack-auto", main_rel, zig_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "projects/at89c52_sim")
+        for _, name in ipairs({"main.rel", "main.asm", "main.lst", "main.rst", "main.sym",
+                              "led.asm", "led.rel", "simtest.ihx", "simtest.lk", "simtest.lst",
+                              "simtest.map", "simtest.mem", "simtest.rst", "simtest.sym"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs51 simtest")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)

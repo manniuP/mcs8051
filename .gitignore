@@ -8,6 +8,8 @@
 
 # Zig 源码已纳入版本管理，排除构建产物与缓存
 /zig/zig-out/
+/zig/zig-dbg-out/
+/zig/stage3-out/
 /zig/.zig-cache*/
 # 上游 0.16.1 之外的本地杂物（生成物/会话笔记/误入的目标文件）
 /zig/build_options.zig
@@ -42,6 +44,7 @@
 /examples/ai8051u_blink/*.asm
 /projects/ai8051u_blink/*.asm
 /projects/ai8051u_ptrtest/*.asm
+/projects/at89c52_sim/*.asm
 # 例外：手工编写的参考 asm（非构建产物）
 !/projects/ai8051u_ptrtest/ptrtest_correct.asm
 !/projects/ai8051u_ptrtest/test_dr28.asm
