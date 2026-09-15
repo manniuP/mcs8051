@@ -32,7 +32,7 @@ function Step([string]$name, [scriptblock]$body) {
 # ---- 1) mcs251 targets ----
 Step "xmake configure (mcs251)" { xmake f --mcs_arch=mcs251 }
 $targets = @("ziglog","zigled","zigasm","zigirq","zigmem","zigbuzz","ptrtest","uart","ccobs")
-if (-not $SkipUsb) { $targets += @("usbcdc","usbhid") }
+if (-not $SkipUsb) { $targets += @("usbcdc","usbhid","usbcdcobs") }
 foreach ($t in $targets) { Step ("build " + $t) { xmake build $t } }
 
 # ---- 2) mcs51 simtest ----

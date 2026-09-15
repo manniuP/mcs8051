@@ -1112,3 +1112,63 @@ target("usbhid")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
+
+-- usbcdcobs：COBS 日志帧走 USB-CDC 输出（摆脱 UART 线）。
+-- 单编译单元 usb_cdc_cobs_all.c（含 main + 全部 ISR，复用 usb_cdc 驱动源码）+ lib/cobs/cobs.c。
+-- 主机用 examples/ai8051u_zig_log/decode.ps1 -Port <CDC口> 解码（帧格式同 ziglog/ccobs）。
+-- 状态：编译/链接已验证；**真机待验证**（见 docs/交接 §11）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build usbcdcobs
+target("usbcdcobs")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("usbcdcobs 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u_usb_cdc_cobs")
+        local usbsrc = path.join(projdir, "examples/ai8051u_usb_cdc/src")
+        local incdir = path.join(projdir, "lib/include")
+        local cobsdir = path.join(projdir, "lib/cobs")
+        local sdcc = get_config("sdcc251")
+        if not os.isfile(sdcc) then
+            raise("找不到工具：" .. sdcc .. "（用 --sdcc251 覆盖路径）")
+        end
+
+        local all_c    = path.join(scriptdir, "usb_cdc_cobs_all.c")
+        local all_rel  = path.join(scriptdir, "usb_cdc_cobs_all.rel")
+        local cobs_c   = path.join(cobsdir, "cobs.c")
+        local cobs_rel = path.join(scriptdir, "cobs.rel")
+        local ihx      = path.join(scriptdir, "usb_cdc_cobs.ihx")
+        local cflags   = {"-mmcs251", "--model-large",
+                          "-I", incdir, "-I", usbsrc, "-I", cobsdir}
+
+        print("[1/3] C -> rel   : usb_cdc_cobs_all.c")
+        os.vrunv(sdcc, table.join(cflags, {"-c", all_c, "-o", all_rel}))
+        print("[2/3] C -> rel   : lib/cobs/cobs.c")
+        os.vrunv(sdcc, table.join(cflags, {"-c", cobs_c, "-o", cobs_rel}))
+        print("[3/3] link -> ihx: usb_cdc_cobs.ihx")
+        os.vrunv(sdcc, table.join({"-mmcs251", "--model-large", "--code-loc", "0xff0000"},
+                                  {all_rel, cobs_rel, "-o", ihx}))
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_usb_cdc_cobs")
+        for _, n in ipairs({"usb_cdc_cobs_all.rel", "usb_cdc_cobs_all.lst", "usb_cdc_cobs_all.rst",
+                            "usb_cdc_cobs_all.sym", "usb_cdc_cobs_all.asm", "cobs.rel",
+                            "usb_cdc_cobs.ihx", "usb_cdc_cobs.lk", "usb_cdc_cobs.map", "usb_cdc_cobs.mem"}) do
+            os.tryrm(path.join(scriptdir, n))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 usbcdcobs")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)

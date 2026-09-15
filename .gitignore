@@ -90,6 +90,7 @@
 # USB 示例：SDCC 由 .c 生成的汇编（.c 是源）
 /examples/ai8051u_usb_cdc/src/*.asm
 /examples/ai8051u_usb_hid/src/*.asm
+/examples/ai8051u_usb_cdc_cobs/*.asm
 
 # Zig / xmake 构建缓存
 .zig-cache/
