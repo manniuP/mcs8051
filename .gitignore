@@ -47,6 +47,8 @@
 /projects/at89c52_sim/*.asm
 /projects/ai8051u_led/*.asm
 /projects/ai8051u_uart/*.asm
+/projects/ai8051u_zig_led/*.asm
+!/projects/ai8051u_zig_led/crt0.asm
 # 例外：手工编写的参考 asm（非构建产物）
 !/projects/ai8051u_ptrtest/ptrtest_correct.asm
 !/projects/ai8051u_ptrtest/test_dr28.asm

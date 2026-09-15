@@ -464,3 +464,82 @@ target("uart")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
+
+-- zigled：纯 Zig 点灯（P1.1，约 1Hz），无 C。
+-- zig -> sdas251 -> sdcc 链接（配 projects/ai8051u_zig_led/crt0.asm 提供复位入口，
+-- --code-loc 0xff0000 = AI8051U 程序存储器起点）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigled
+target("zigled")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigled 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "projects/ai8051u_zig_led")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool)
+            end
+        end
+
+        local led_zig  = path.join(scriptdir, "led.zig")
+        local led_asm  = path.join(scriptdir, "led.asm")
+        local led_rel  = path.join(scriptdir, "led.rel")
+        local crt0_rel = path.join(scriptdir, "crt0.rel")
+        local ihx      = path.join(scriptdir, "led.ihx")
+
+        -- [1/5] Zig -> .asm
+        print("[1/5] Zig -> asm  : led.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "zig/lib"))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. led_asm, led_zig})
+
+        -- [2/5] 修局部标签重名（tools/fix_mcs_labels.py）
+        local fixer = path.join(projdir, "tools/fix_mcs_labels.py")
+        if os.isfile(fixer) then
+            os.vrunv(get_config("python"), {fixer, led_asm})
+        end
+
+        -- [3/5] .asm -> .rel
+        print("[3/5] asm -> rel : led.asm")
+        os.vrunv(sdas, {"-plosgffw", led_rel, led_asm})
+
+        -- [4/5] crt0 -> .rel
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        -- [5/5] sdcc 链接 -> .ihx（--code-loc 0xff0000 = AI8051U 复位入口）
+        print("[5/5] link -> ihx : led.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        crt0_rel, led_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "projects/ai8051u_zig_led")
+        for _, name in ipairs({"led.asm", "led.rel", "led.lst", "led.sym", "led.rst",
+                              "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
+                              "led.lk", "led.ihx", "led.map", "led.mem"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 zigled")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
