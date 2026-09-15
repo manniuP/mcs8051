@@ -26,7 +26,7 @@
 
 ## 关键事实
 
-1. **mcs251/zig 基线是 0.16.x（0.16.1），不是 0.17 master**。
+1. **mcs251/compiler 基线是 0.16.x（0.16.1），不是 0.17 master**。
    证据：`src/Package.zig` blob 哈希与 origin/0.16.x 完全一致；包含
    master 中已删除的 7 个文件（Package/Fetch 等）；src 文件数
    189 = 0.16.x 的 183 + 6 个 MCS 新文件。
@@ -49,14 +49,14 @@
 
 ## ptrtest 现状（55MB 版本全流程已跑通）
 
-- `projects/ai8051u_ptrtest/`：ptrtest.zig（fill/sum）+ main.c
+- `examples/ai8051u_ptrtest/`：ptrtest.zig（fill/sum）+ main.c
 - 为绕过 SDCC 多参数约定（`_func_PARM_N` 全局变量，Zig 侧未实现），
   sum 已改为单参数；首参数 3 字节指针经 DPL/DPH/B 传递正常。
 - 全流程命令（zig→sdas251→sdcc→link）：
 
   ```powershell
-  $z = "<workspace>\mcs251\zig\.zig-cache\o\910e64d8d4f1c56e7d695ff7c69852eb\zig.exe"
-  $bin = "<workspace>\mcs251\sdcc-mcs251-windows-x64\sdcc-mcs251\bin"
+  $z = "<workspace>\mcs251\compiler\.zig-cache\o\910e64d8d4f1c56e7d695ff7c69852eb\zig.exe"
+  $bin = "<workspace>\mcs251\tools/sdcc-mcs251-windows-x64\sdcc-mcs251\bin"
   $a = @("build-obj","-target","mcs251-freestanding","-femit-bin=ptrtest_v4.asm","ptrtest.zig")
   & $z $a   # 注意：ZIG_GLOBAL_CACHE_DIR/ZIG_LIB_DIR 需设置；用数组传参避免 PS 截获
   & "$bin\sdas251.exe" "-plosgffw" "ptrtest_v4.rel" "ptrtest_v4.asm"
@@ -144,7 +144,7 @@
 - 58MB 版无 `.ptr_rt` 修复，`fill`/`sum` 全部帧内寻址，**无 DR28 间接访问**
 - 真机运行会卡在 `test_fail=2`（C 读回 buf 发现内容不对）
 - 要让 ptrtest 真正工作，需修复帧内寻址 bug（`.ptr_rt` 修复仅存在于
-  源码 [CodeGen.zig L643-L652](../zig/src/codegen/mcs/CodeGen.zig#L643-L652)，
+  源码 [CodeGen.zig L643-L652](../compiler/src/codegen/mcs/CodeGen.zig#L643-L652)，
   但无法通过自举编译器验证）
 
 ### 可用编译器对照表
@@ -262,7 +262,7 @@ thread panic: integer does not fit in destination type   ← 崩在此处
   **不是 Sema，更不是 codegen**。此前笔记"崩溃在 Sema 及之后"的结论错误，
   原因：`zig ast-check 单文件` 只解析单文件，而 build-obj 要 AstGen
   整个 std（analysis roots 恒含 std_mod，见 Compilation.zig L3055）。
-- `-j1` 串行化后最后进入的文件恒为 **`zig/lib/std/fmt.zig`**
+- `-j1` 串行化后最后进入的文件恒为 **`compiler/lib/std/fmt.zig`**
   （无 parse/astgen 完成标记区分，22:19 重建的 exe 已加 parse start/done
   标记，但**尚未运行测试**，下次第一步即跑它区分是 Ast.parse 还是
   AstGen.generate 崩）。
@@ -271,7 +271,7 @@ thread panic: integer does not fit in destination type   ← 崩在此处
 
 - **缓存污染排除**：全新 global/local 缓存
   （`.zig-cache3\global_fresh1`）仍确定性崩在 fmt.zig。
-- **fmt.zig 是原版**：MCS 提交 1bd1983519 对 `zig/lib` 只改 4 个文件
+- **fmt.zig 是原版**：MCS 提交 1bd1983519 对 `compiler/lib` 只改 4 个文件
   （std/Target.zig、std/Target/mcs51.zig、mcs251.zig、std/builtin.zig），
   fmt.zig 字节级为 0.16.1 原版；AstGen.zig 也**不在** MCS 改动文件清单中
   （MCS 只改 src 下 15 个文件：Sema.zig +2、Type.zig 4 行、Zcu.zig +4、
@@ -314,11 +314,11 @@ thread panic: integer does not fit in destination type   ← 崩在此处
 
 - 未提交修改 5 个文件（含插桩）：zig/src/main.zig、Compilation.zig、
   Zcu/PerThread.zig、Builtin.zig、codegen.zig（含 undefPtrBits 真修复）
-- 测试文件：`projects/ai8051u_ptrtest/empty.zig` 当前为 add 函数版本
+- 测试文件：`examples/ai8051u_ptrtest/empty.zig` 当前为 add 函数版本
 - 最新插桩 exe：`zig\.zig-cache-dbg\o\` 下 22:19 左右的 zig.exe
   （parse start/done 标记版，未测）
 - 未跟踪：zig-baseline/、zig/.zig-out-r3、.zig-out-r4、
-  projects/ai8051u_blink/led* 等，勿提交
+  examples/ai8051u_blink/led* 等，勿提交
 
 ## 收尾：清理摊子 + 固定“直连管线”（2026-09-14 晚）
 
@@ -338,13 +338,13 @@ C   源 --(sdcc -mmcs251 -c)--> .rel
 
 | 项 | 值 |
 |----|----|
-| 位置 | `mcs251/tools/zig-bootstrap/zig.exe`（+ `zig.pdb`） |
+| 位置 | `mcs251/compiler/zig-out/bin/zig.exe`（+ `zig.pdb`） |
 | 大小/版本 | 55.7 MB / 0.16.1 |
 | 来源 | 自动备份自 `zig/.zig-cache/o/910e64d8.../zig.exe`（15:04 构建） |
 | 特性 | 含 `mcs51`/`mcs251` 目标定义；**不含** `.ptr_rt` 修复 |
-| 忽略 | 已在 `.gitignore` 加 `/tools/zig-bootstrap/` |
+| 忽略 | 已在 `.gitignore` 加 `/compiler（系统 zig 重建）/` |
 
-使用前必须 `ZIG_LIB_DIR=zig/lib`。`xmake.lua` 的 `--zig` 与
+使用前必须 `ZIG_LIB_DIR=compiler/lib`。`xmake.lua` 的 `--zig` 与
 `driver/build.ps1` 的 `-Zig` 默认值已改为该路径。
 
 ### 磁盘清理（释放约 50 GB）
@@ -353,18 +353,18 @@ C   源 --(sdcc -mmcs251 -c)--> .rel
 
 - `zig/.zig-cache*`（11 个缓存目录，含 31 GB 的 `.zig-cache/o`：大量
   150MB `zig_zcu.obj` 与 1GB 级失败 zig.exe）
-- `zig/.zig-out-r3`、`zig/.zig-out-r4`、`zig/zig-out`（3 个 1GB 级失败编译器
+- `zig/.zig-out-r3`、`zig/.zig-out-r4`、`compiler/zig-out`（3 个 1GB 级失败编译器
   + 重复的 lib 拷贝）
 - 顶层 `.zig-cache`、`.zig-cache2`、`.zig-cache3`、`.xmake`
 - `zig.master-1415.bak`（误判为 0.17 master 时的备份）
 - git worktree `zig-baseline/`（基线与主仓历史重复，已 `git worktree remove`）
-- `projects/ai8051u_ptrtest/` 下全部调试产物（约 100 个 `.asm/.rel/.ihx/.txt`、
+- `examples/ai8051u_ptrtest/` 下全部调试产物（约 100 个 `.asm/.rel/.ihx/.txt`、
   多个 `.zig-cache*`、编译出的 `noptr/simple/simplest/ptrtest` 可执行文件）
 - `projects|examples/ai8051u_blink/` 构建产物（保留 `build.ps1`）
 
 保留：源码（`main.c`/`ptrtest.zig`）、手工参考汇编
 `ptrtest_correct.asm`、`test_dr28.asm`、`vendor/`、`sdcc-c251/`、
-`sdcc-mcs251-windows-x64/`。
+`tools/sdcc-mcs251-windows-x64/`。
 
 清理前剩余 39.8 GB → 清理后 89+ GB。
 
@@ -384,8 +384,8 @@ C   源 --(sdcc -mmcs251 -c)--> .rel
 
 ```powershell
 # 手动四步（产物在临时目录）
-$env:ZIG_LIB_DIR = "<repo>\zig\lib"
-& <repo>\tools\zig-bootstrap\zig.exe build-obj -target mcs251-freestanding `
+$env:ZIG_LIB_DIR = "<repo>\compiler\lib"
+& <repo>\compiler\zig-out\bin\zig.exe build-obj -target mcs251-freestanding `
     -femit-bin=ptrtest.asm ptrtest.zig
 & <sdcc251>\bin\sdas251.exe -plosgffw ptrtest.rel ptrtest.asm
 & <sdcc251>\bin\sdcc.exe -mmcs251 --model-large -I <repo>\include -c main.c -o main.rel
@@ -399,7 +399,7 @@ $env:ZIG_LIB_DIR = "<repo>\zig\lib"
 ```powershell
 xmake f --mcs_arch=mcs251    # 注意：xmake v3 用下划线，不是 --mcs-arch
 xmake build ptrtest
-# -> OK -> mcs251\projects\ai8051u_ptrtest\ptrtest.ihx
+# -> OK -> mcs251\examples\ai8051u_ptrtest\ptrtest.ihx
 ```
 
 ### 当时限制（后被下面的源码改写解决）
@@ -422,7 +422,7 @@ xmake build ptrtest
 | `@ptrFromInt(@intFromPtr(buf)+i).*` | 30 | 10 | ✓ 但标签太多 |
 | **`(@as(*u8, @ptrCast(buf + i))).*`** | **0** | **24** | ✅ 最佳 |
 
-### 采用的写法（`projects/ai8051u_ptrtest/ptrtest.zig`）
+### 采用的写法（`examples/ai8051u_ptrtest/ptrtest.zig`）
 
 ```zig
 export fn fill(buf: [*]u8) u8 {
@@ -560,7 +560,7 @@ mcs251 仿真不可用（ucsim 的 251 核是空壳，见上节），但 **8051�
   （内存类型名见 `info memory`）；回归风格还会先
   `set error unknown_code off`、`set opt selfjump_stop 0`。
 
-### 新增自检测试工程 `projects/at89c52_sim/`
+### 新增自检测试工程 `examples/at89c52_sim/`
 
 - **只用标准 8051 SFR**（AT89C52 风格，不依赖 STC 专有寄存器），ucsim 可直接执行。
 - C（`main.c`）：连续调用 Zig `led_next(u8)` 八次，逐项比对期望序列；
@@ -593,22 +593,22 @@ mcs251 仿真不可用（ucsim 的 251 核是空壳，见上节），但 **8051�
 
 ## 自举问题解决：改用系统 zig 0.16.0 重建（2026-09-15）
 
-前面的“放弃自举”结论**作废**。根因确认：`tools/zig-bootstrap/zig.exe`（55MB）
+前面的“放弃自举”结论**作废**。根因确认：`compiler/zig-out/bin/zig.exe`（55MB）
 是个**坏 bootstrap**——它把 stage2 `zig.exe` miscompile 成一编译就崩
 （x86_64 主机路径栈溢出 / `@intCast`）。用**官方 0.16.0** 当 bootstrap 就正常。
 
 ### 重建方法（系统 zig 0.16.0，winget 装的，`zig` 已在 PATH）
 
 ```powershell
-cd <workspace>\mcs251\zig
-zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\lib
-# 产物：<workspace>\mcs251\zig\zig-out\bin\zig.exe（0.16.1）
+cd <workspace>\mcs251\compiler
+zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\compiler\lib
+# 产物：<workspace>\mcs251\compiler\zig-out\bin\zig.exe（0.16.1）
 ```
 
-- **必须** `--zig-lib-dir` 指向源码树自带的 `zig/lib`（含 mcs51/mcs251 目标定义）；
+- **必须** `--zig-lib-dir` 指向源码树自带的 `compiler/lib`（含 mcs51/mcs251 目标定义）；
   否则用系统 zig 自己的 lib 会报 `no field named 'mcs51' in enum Target.Cpu.Arch`。
 - `-Dno-lib` 跳过 lib 拷贝，省时；运行新编译器时仍设
-  `ZIG_LIB_DIR=<repo>\zig\lib`。
+  `ZIG_LIB_DIR=<repo>\compiler\lib`。
 - 首次全量编译若干分钟；增量/命中缓存很快。
 
 ### 验证
@@ -616,14 +616,14 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\l
 - `zig-out\bin\zig.exe version` → `0.16.1`。
 - `build-obj -target x86_64-windows`（此前**必崩**）→ **exit 0**。
 - `-target mcs51-freestanding` / `mcs251-freestanding` → 正常出 asm。
-- 用它重建 `projects/at89c52_sim` 的 `simtest.ihx`，ucsim 里
+- 用它重建 `examples/at89c52_sim` 的 `simtest.ihx`，ucsim 里
   `0x8000=aa`、序列正确 → 产物可信。
 
 ### 意义
 
 - **解锁所有后端源码级改动**：mcs51 指针/全局/多参数、标签前缀、peephole 优化等，
-  都能改 `zig/src/codegen/mcs/` 后重建验证，不再受“不能重编”限制。
-- xmake 的 `--zig` 默认已改为**优先** `zig/zig-out/bin/zig.exe`，退回旧 bootstrap。
+  都能改 `compiler/src/codegen/mcs/` 后重建验证，不再受“不能重编”限制。
+- xmake 的 `--zig` 默认已改为**优先** `compiler/zig-out/bin/zig.exe`，退回旧 bootstrap。
 
 ## 验证：stage2 可用、ptr_rt 生效、stage3 仍崩（2026-09-15）
 
@@ -665,7 +665,7 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\l
 - **迭代后端时用 Debug**：只关心 mcs51/mcs251 产物，Debug 快约 5×。
   命令加 `-Doptimize=Debug` + 独立 `--cache-dir`。
 - 需主机编译（如自举/发布）时才用 ReleaseFast。
-- 旧 `tools/zig-bootstrap/zig.exe` 的 **55 MB** 与 Debug 产物 **55.7 MB** 几乎一致
+- 旧 `compiler/zig-out/bin/zig.exe` 的 **55 MB** 与 Debug 产物 **55.7 MB** 几乎一致
   → 它很可能就是一个 Debug 构建，这也解释了它的主机崩溃症状。
 - **“把后端拎出来做运行库”不可行/不划算**：`src/codegen/mcs/` 吃的是 Zig **AIR**
   （由 AstGen/Sema/Zcu 产生），无法脱离前端独立运行；要独立就得重写 Sema。
@@ -685,12 +685,12 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\l
 
 验证（ucsim，AT89C52 风格自检）：
 
-- `projects/at89c52_sim`：C 传 `__xdata u8 *`，Zig `sum4` 读 4 字节求和；
+- `examples/at89c52_sim`：C 传 `__xdata u8 *`，Zig `sum4` 读 4 字节求和；
   `0x8000=aa`、`failcode=0`。
 - 三种写法均 `dr28=0` 且 `sdas8051` 通过：`buf[i]`、`(@as(*u8,@ptrCast(buf+i))).*`、`buf+1`。
 - fill/sum（mcs51 版 ptrtest）：`fill` 返回 5、`sum` 返回 20（`0x14`），`status=0xaa`。
 
-改动：`zig/src/codegen/mcs/CodeGen.zig`（约 +90 行）。重编：Debug ~100s / ReleaseFast ~11min。
+改动：`compiler/src/codegen/mcs/CodeGen.zig`（约 +90 行）。重编：Debug ~100s / ReleaseFast ~11min。
 
 仍缺：多参数、全局变量、切片、`@ptrFromInt(addr).*`（单元素指针）——见 [06 §1.1](06-常见问题与限制.md)。
 
@@ -706,7 +706,7 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\l
 - 验证（ucsim）：
   - `add3(1,2,3)=6`、`add4(1,2,3,4)=10`；
   - **Zig 回调 C**：`viac(1) → cadd3(1,2,3) = 123`；
-  - `projects/at89c52_sim`（标量 + 指针 + 多参数）`status=0xaa`。
+  - `examples/at89c52_sim`（标量 + 指针 + 多参数）`status=0xaa`。
 - C 侧必须 `--stack-auto`（`xmake` 的 simtest 已加）。**未改 SDCC 源码**——
   `--stack-auto` 是现成开关。
 - 预留的 SDCC 分叉：`<workspace>\sdcc-c251-abi`（原 `sdcc-c251` 保持原样）。
@@ -726,7 +726,7 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\zig\l
 - 验证（ucsim）：
   - extern（C 定义、Zig 读写）：`gv` 5→6（`inc_gv`/`get_gv`）；
   - Zig 定义（C 读写）：`export var counter`，C 侧 `counter`/`bump()` 一致；
-  - `projects/at89c52_sim` 增至 **标量 + 指针 + 多参数 + 全局** 全通过。
+  - `examples/at89c52_sim` 增至 **标量 + 指针 + 多参数 + 全局** 全通过。
 - 限制：非零初值（`var x = 42`）暂不生效（xdata 初始化需 XINIT + 启动拷贝，
   Zig 后端不发启动片段）。
 

@@ -14,13 +14,13 @@ See [PLAN-计划.md](PLAN-计划.md).
     mcs251/
       README.md        repo entry, points into docs/
       docs/            all docs: 01-11, PLAN, repository READMEs
-      projects/        Buildable C + Zig projects (ai8051u_blink, ai8051u_ptrtest)
+      examples/        Buildable C + Zig projects (ai8051u_blink, ai8051u_ptrtest)
       examples/        Minimal examples
       include/         SDCC headers: c51.h, ai8051u_sfr.h, mcs_intrins.h
       port/            STC AI8051U HAL (SDCC) and target-description tests
       driver/          build scripts (build.ps1, crt0-*.asm; docs in docs/08)
       zig/             Zig compiler source, rebased onto upstream branch `0.16.x`, with the MCS backend
-      tools/zig-bootstrap/  the only usable prebuilt 55MB zig.exe (binary, not committed)
+      compiler（系统 zig 重建）/  the only usable prebuilt 55MB zig.exe (binary, not committed)
       sdcc-c251/       vendored SDCC fork with MCS-51 + MCS-251 targets, used as backend/reference
 
 ## Interop contract
@@ -40,22 +40,22 @@ changes (see [07-调试笔记-ptr_rt自举崩溃定位.md](07-调试笔记-ptr_r
 Use the single prebuilt compiler and point `ZIG_LIB_DIR` at the tree's own `lib/` so it loads
 the `std` carrying the `mcs51`/`mcs251` target definitions:
 
-    $env:ZIG_LIB_DIR = "<workspace>\mcs251\zig\lib"
-    $zig = "<workspace>\mcs251\tools\zig-bootstrap\zig.exe"
+    $env:ZIG_LIB_DIR = "<workspace>\mcs251\compiler\lib"
+    $zig = "<workspace>\mcs251\compiler\zig-out\bin\zig.exe"
     & $zig version   # 0.16.1
 
 Smoke test (MCS-251, void leaf function):
 
     & $zig build-obj -target mcs251-freestanding -femit-bin=empty.asm empty.zig
 
-> `tools/zig-bootstrap/` is git-ignored, the binary is not committed. This build lacks the
+> `compiler（系统 zig 重建）/` is git-ignored, the binary is not committed. This build lacks the
 > `.ptr_rt` fix; see [01-环境准备.md](01-环境准备.md) section 3. The fix can be worked
 > around in source (a `*u8` dereference form), see
 > [07](07-调试笔记-ptr_rt自举崩溃定位.md).
 
 ## Status
 
-The self-hosted MCS backend (`zig/src/codegen/mcs/`) builds and emits ASxxxx assembly for:
+The self-hosted MCS backend (`compiler/src/codegen/mcs/`) builds and emits ASxxxx assembly for:
 
 - 1-4 byte scalar parameters/returns with the ABI register slots (`DPL/DPH/B/A`);
 - the first scalar parameter in registers, remaining scalars read from the reentrant

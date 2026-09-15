@@ -3,9 +3,9 @@
 
 用法：
     python tools/keil2sdcc_c.py \\
-        --input-dir vendor/stc/hal \\
-        --output-dir port/stc-hal \\
-        --sfr-header vendor/stc/AI8051U.keil.h
+        --input-dir tools/vendor/stc/hal \\
+        --output-dir lib/stc-hal \\
+        --sfr-header tools/vendor/stc/AI8051U.keil.h
 
 规则（只改代码部分，不动 // 与 /* */ 注释）：
     void f(void) interrupt N        -> void f(void) __interrupt(N)
@@ -16,7 +16,7 @@
     #include "intrins.h"           -> #include "mcs_intrins.h"
     Keil char putchar(char)         -> SDCC int putchar(int)
 
-不翻译 AI8051U.H（已由 keil2sdcc.py 生成 include/ai8051u_sfr.h）。
+不翻译 AI8051U.H（已由 keil2sdcc.py 生成 lib/include/ai8051u_sfr.h）。
 """
 
 import argparse
@@ -222,7 +222,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input-dir", required=True, type=Path)
     ap.add_argument("--output-dir", required=True, type=Path)
-    ap.add_argument("--sfr-header", type=Path, default=Path("vendor/stc/AI8051U.keil.h"))
+    ap.add_argument("--sfr-header", type=Path, default=Path("tools/vendor/stc/AI8051U.keil.h"))
     args = ap.parse_args()
 
     if not args.input_dir.is_dir():

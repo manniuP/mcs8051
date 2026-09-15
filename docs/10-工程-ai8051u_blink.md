@@ -3,7 +3,7 @@
 本工程演示如何用 **C（STC AI8051U HAL 库）+ Zig（MCS 后端）** 共同构建一个可
 烧录的流水灯固件，是 [docs/](README.md) 中「Zig + SDCC 混编」流程的完整落地示例。
 
-> 源码在 `projects/ai8051u_blink/`，本说明文档统一收录在 `docs/`。
+> 源码在 `examples/ai8051u_blink/`，本说明文档统一收录在 `docs/`。
 
 ## 效果
 
@@ -13,7 +13,7 @@
 ## 工程结构
 
 ```
-projects/ai8051u_blink/
+examples/ai8051u_blink/
   main.c        C 主程序：STC HAL 配置 P1、写 P1、调 delay_ms
   led.zig       Zig 逻辑：export fn led_next(u8) u8，返回下一个灯位
   build.ps1     构建脚本：C→rel，Zig→asm→rel，再链接成 ihx
@@ -26,15 +26,15 @@ projects/ai8051u_blink/
 ## 依赖
 
 - 本机 SDCC 4.5.20（`sdcc.exe` / `sdas8051.exe` / `sdld.exe`）；
-- 预编译的 `tools/zig-bootstrap/zig.exe`（55MB，见 [01-环境准备](01-环境准备.md) 第 3 节）；
-- 头文件 `include/` 与 STC HAL `port/stc-hal/`（脚本自动引用）。
+- 预编译的 `compiler/zig-out/bin/zig.exe`（55MB，见 [01-环境准备](01-环境准备.md) 第 3 节）；
+- 头文件 `include/` 与 STC HAL `lib/stc-hal/`（脚本自动引用）。
 
 准备步骤见 [01-环境准备.md](01-环境准备.md)。
 
 ## 构建
 
 ```powershell
-cd projects\ai8051u_blink
+cd examples\ai8051u_blink
 .\build.ps1
 ```
 
@@ -48,7 +48,7 @@ cd projects\ai8051u_blink
 ## 烧录
 
 1. 用 STC-ISP（AI8051U 版）选择型号，装入 `blink.ihx`，下载；
-2. 目标主频设为 **40MHz**，与 `port/stc-hal/config.h` 的 `MAIN_Fosc` 一致，
+2. 目标主频设为 **40MHz**，与 `lib/stc-hal/config.h` 的 `MAIN_Fosc` 一致，
    否则 `delay_ms()` 延时不准。
 
 ## 工作原理
@@ -100,4 +100,4 @@ export fn led_next(cur: u8) u8 {
 - **切换到 MCS-251**：把 `build.ps1` 里的 `-mmcs51`→`-mmcs251`、
   `mcs51-freestanding`→`mcs251-freestanding`、`sdas8051`→`sdas251`，并按
   [05-移植到MCS-251.md](05-移植到MCS-251.md) 准备 `sdcc-c251`。
-- **换外设**：直接调用 `port/stc-hal/` 下对应的 HAL（UART/PWM/Timer…）。
+- **换外设**：直接调用 `lib/stc-hal/` 下对应的 HAL（UART/PWM/Timer…）。

@@ -10,8 +10,10 @@
   —— 自举崩溃定位、磁盘清理、以及 **ptr_rt 间接寻址跑通** 的完整记录
 - [`docs/PLAN-计划.md`](docs/PLAN-计划.md) —— 总体计划、ABI 冻结、里程碑
 
-> 不再走自举重编编译器的路；固定使用 `tools/zig-bootstrap/zig.exe`（55MB），
-> 只走「zig 编译 Zig 源 + sdcc 编译 C + 链接」的直连管线。
+顶层目录按类别组织：`compiler/`（Zig + MCS 后端源码）、`lib/`（库与头文件，含 `cobs/`）、
+`examples/`（示例工程）、`docs/`（文档）、`tools/`（脚本与预编译工具链）。
+编译器用**系统 zig 从 `compiler/` 源码重建**（产物 `compiler/zig-out/bin/zig.exe`），
+管线为「zig 编译 Zig 源 + sdcc 编译 C + 链接」。
 
 ## 快速开始
 
@@ -21,7 +23,7 @@ xmake f --mcs_arch=mcs251
 
 # C + Zig 3 字节指针互操作验证（M3）
 xmake build ptrtest
-# -> projects\ai8051u_ptrtest\ptrtest.ihx
+# -> examples\ai8051u_ptrtest\ptrtest.ihx
 ```
 
 ---

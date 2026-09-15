@@ -28,7 +28,7 @@ Reference line numbers are approximate and shift with upstream edits.
 
 ## A. Target description layer (lib/std)
 
-1. `zig/lib/std/Target.zig`
+1. `compiler/lib/std/Target.zig`
 
    - `Arch` 枚举（~1352）：添加 `mcs51`、`mcs251`。
    - `Arch` enum (~1352): add `mcs51`, `mcs251`.
@@ -49,11 +49,11 @@ Reference line numbers are approximate and shift with upstream edits.
    - `ObjectFormat.default()`（~1069）：默认 `.hex`。
    - `ObjectFormat.default()` (~1069): default `.hex`.
 
-2. `zig/lib/std/Target/mcs51.zig`、`mcs251.zig`（新建）：`Feature`、`featureSet*`、`all_features`、`cpu` 模型。在 `Target.zig` 中添加 `pub const mcs51 = @import("Target/mcs51.zig");` 等（~767 区域）。
+2. `compiler/lib/std/Target/mcs51.zig`、`mcs251.zig`（新建）：`Feature`、`featureSet*`、`all_features`、`cpu` 模型。在 `Target.zig` 中添加 `pub const mcs51 = @import("Target/mcs51.zig");` 等（~767 区域）。
 
-   `zig/lib/std/Target/mcs51.zig`, `mcs251.zig` (new): `Feature`, `featureSet*`, `all_features`, `cpu` models. Add `pub const mcs51 = @import("Target/mcs51.zig");` etc. in `Target.zig` (~767 region).
+   `compiler/lib/std/Target/mcs51.zig`, `mcs251.zig` (new): `Feature`, `featureSet*`, `all_features`, `cpu` models. Add `pub const mcs51 = @import("Target/mcs51.zig");` etc. in `Target.zig` (~767 region).
 
-3. `zig/lib/std/lang.zig`
+3. `compiler/lib/std/lang.zig`
 
    - `AddressSpace`（~528）：添加 `data/idata/pdata/xdata/code/sfr/sbit`；将 `enum(u5)` 改为 `enum(u6)`。
    - `AddressSpace` (~528): add `data/idata/pdata/xdata/code/sfr/sbit`; change `enum(u5) -> enum(u6)`.
@@ -84,9 +84,9 @@ Reference line numbers are approximate and shift with upstream edits.
    - `AnyMir` 联合（~100）：添加 `mcs` 变体 + `tag()`。
    - `AnyMir` union (~100): add `mcs` variant + `tag()`.
 
-6. `zig/src/codegen/mcs/`（新建，参照 `codegen/riscv64/`）
+6. `compiler/src/codegen/mcs/`（新建，参照 `codegen/riscv64/`）
 
-   `zig/src/codegen/mcs/` (new, model after `codegen/riscv64/`)
+   `compiler/src/codegen/mcs/` (new, model after `codegen/riscv64/`)
 
    - `CodeGen.zig`：`legalizeFeatures`、`generate`、`generateLazy`。
    - `CodeGen.zig`: `legalizeFeatures`, `generate`, `generateLazy`.
@@ -114,9 +114,9 @@ Reference line numbers are approximate and shift with upstream edits.
 
    `zig/src/Compilation.zig` / `Config.zig`: backend selection; add the external-SDCC C path (only built-in clang exists today; `clangMain` in `Compilation.zig` ~33).
 
-10. `zig/lib/compiler_rt/`：不要从零重新实现软浮点/64 位除法；发出对匹配 ABI 的 SDCC 运行时符号的调用，或链接 SDCC `mcs251-*` 库。
+10. `compiler/lib/compiler_rt/`：不要从零重新实现软浮点/64 位除法；发出对匹配 ABI 的 SDCC 运行时符号的调用，或链接 SDCC `mcs251-*` 库。
 
-    `zig/lib/compiler_rt/`: do not reimplement soft-float/64-bit division from scratch; emit calls to SDCC runtime symbols with matching ABI, or link SDCC `mcs251-*` libraries.
+    `compiler/lib/compiler_rt/`: do not reimplement soft-float/64-bit division from scratch; emit calls to SDCC runtime symbols with matching ABI, or link SDCC `mcs251-*` libraries.
 
 11. SFR/位访问：C 使用 SDCC 头文件；Zig 使用固定地址 volatile，或后续添加 `@sfr`/`@bit` 内建函数（需改动 AstGen/Sema）。
 
@@ -185,16 +185,16 @@ Already sufficient:
 - 工具链内部：`sdcc-c251/src/mcs251/`、`sdcc-c251/sdas/as251`、`sdcc-c251/sdas/as8051`。
 - Toolchain internals: `sdcc-c251/src/mcs251/`, `sdcc-c251/sdas/as251`, `sdcc-c251/sdas/as8051`.
 
-## G. STC 官方资料（已归档到 vendor/stc）
+## G. STC 官方资料（已归档到 tools/vendor/stc）
 
 > 本节原文即为中文，无英文对照。
 
-分类（来源：STC 官网下载，见 `vendor/stc/`）：
+分类（来源：STC 官网下载，见 `tools/vendor/stc/`）：
 
 可用：
 
 - `AI8051U.keil.h`：STC 官方 Keil 头，116 `sfr` + 309 `sbit` + 670 条 `far` 指针 XFR
-  定义，是 AI8051U 寄存器表的权威来源。经 `tools/keil2sdcc.py` 翻译为 `include/ai8051u_sfr.h`。
+  定义，是 AI8051U 寄存器表的权威来源。经 `tools/keil2sdcc.py` 翻译为 `lib/include/ai8051u_sfr.h`。
 - `stc8h_Compiler.h`：STC 的编译器抽象层，给出 SDCC 关键字映射
   （`SFR`/`SBIT`/`SFRX`/`INTERRUPT`/`INTERRUPT_USING`）。作为 `c51.h` 的权威参照。
 - `stc8h_SDCC_C51.h`：STC 官方 SDCC SFR 头（STC8H），示范 XFR 用 `__xdata` 指针。
@@ -222,7 +222,7 @@ C 运行库（USB、MDU/DSP32）STC 只提供 Keil/IAR 二进制，SDCC 需自�
 > 本节原文即为中文，无英文对照。
 
 - `include/c51.h`：SDCC 语法简化宏（内存段、SFR/SBIT、ISR、临界区、位操作）。
-- `include/ai8051u_sfr.h`：由 `tools/keil2sdcc.py` 自动生成，120 个可位寻址 SBIT +
+- `lib/include/ai8051u_sfr.h`：由 `tools/keil2sdcc.py` 自动生成，120 个可位寻址 SBIT +
   189 个掩码退化位 + 完整 XFR `__xdata` 指针定义 + 中断向量号。
 - `tools/keil2sdcc.py`：Keil → SDCC 头翻译脚本（可重跑，跨平台 Python）。
 - 验证：用本机 SDCC 4.5.20 `-mmcs51` 编译样例，退出 0；确认 `PIN_*` 生成 `setb/cpl`、
@@ -257,5 +257,5 @@ C 运行库（USB、MDU/DSP32）STC 只提供 Keil/IAR 二进制，SDCC 需自�
 - `_nop_()` 必须是**表达式**（STC 的 `NOP2() NOP1(),NOP1()` 依赖逗号表达式），
   故 `mcs_intrins.h` 用内联函数 `mcs_nop_impl()` 实现。
 
-结果：`port/stc-hal/` 下 34 个 `.c` 与全部 `.h` 用本机 SDCC 4.5.20 `-mmcs51 --model-large`
+结果：`lib/stc-hal/` 下 34 个 `.c` 与全部 `.h` 用本机 SDCC 4.5.20 `-mmcs51 --model-large`
 编译全部通过（exit 0）。待 mcs251 端口就绪后再验证 251 目标。

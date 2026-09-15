@@ -1,33 +1,37 @@
+# ===== 顶层结构（分类）=====
+#   compiler/  MCS 后端编译器源码（Zig + 目标定义）
+#   lib/       可复用库与头文件（mcs251.zig、cobs/、uart251/、stc-hal/、include/、crt0/）
+#   examples/  各示例工程
+#   docs/      文档
+#   tools/     构建/辅助工具与预编译工具链（sdcc-mcs251-windows-x64/、vendor/）
+
 # Local build outputs
 /out/
 /build/
 /zig.master-1415.bak
 /tools/wsl_build_sdcc.sh
-# 唯一可用的 55MB 自举 zig 编译器（二进制，不入库；自动备份自 .zig-cache）
-/tools/zig-bootstrap/
 
-# Zig 源码已纳入版本管理，排除构建产物与缓存
-/zig/zig-out/
-/zig/zig-dbg-out/
-/zig/stage3-out/
-/zig/.zig-cache*/
-# 上游 0.16.1 之外的本地杂物（生成物/会话笔记/误入的目标文件）
-/zig/build_options.zig
-/zig/session-ses_f65c.md
-/zig/test.obj
+# Zig 编译器构建产物与缓存（compiler/ 是源码）
+/compiler/zig-out/
+/compiler/zig-dbg-out/
+/compiler/stage3-out/
+/compiler/.zig-cache*/
+# 上游之外误入 compiler/ 的本地杂物
+/compiler/build_options.zig
+/compiler/session-ses_f65c.md
+/compiler/test.obj
 
-# SDCC 上游 fork 源码与预编译产物（独立管理）
+# SDCC 上游 fork 源码与预编译产物（独立管理；工具链已移到 tools/ 下）
 /sdcc-c251/
-/sdcc-mcs251-windows-x64/
+/docs-c251/
 /sdcc-c251-build.log
+/tools/sdcc-mcs251-windows-x64/
 
 # STC 官方 SDK / 受版权资料（本机存放，不提交）
-/vendor/
+/tools/vendor/
 
-# PowerShell 构建脚本（已迁移到 xmake.lua，脚本本身不提交）
-/driver/build.ps1
+# 旧构建脚本（已被 xmake.lua 取代）；示例内的遗留脚本
 /examples/ai8051u_blink/build.ps1
-/projects/ai8051u_blink/build.ps1
 
 # 构建产物（sdcc/sdas/sdld 输出）
 *.ihx
@@ -42,41 +46,43 @@
 
 # Zig 后端生成的汇编（.zig 是源，.asm 是产物）
 /examples/ai8051u_blink/*.asm
-/projects/ai8051u_blink/*.asm
-/projects/ai8051u_ptrtest/*.asm
-/projects/at89c52_sim/*.asm
-/projects/ai8051u_led/*.asm
-/projects/ai8051u_uart/*.asm
-/projects/ai8051u_zig_led/*.asm
-!/projects/ai8051u_zig_led/crt0.asm
-/projects/ai8051u_zig_asm/*.asm
-!/projects/ai8051u_zig_asm/crt0.asm
-/projects/ai8051u_zig_irq/*.asm
-!/projects/ai8051u_zig_irq/crt0.asm
-/projects/ai8051u_zig_mem/*.asm
-!/projects/ai8051u_zig_mem/crt0.asm
-/projects/ai8051u_zig_buzz/*.asm
-!/projects/ai8051u_zig_buzz/crt0.asm
-/projects/ai8051u_zig_log/*.asm
-!/projects/ai8051u_zig_log/crt0.asm
+/examples/ai8051u_ptrtest/*.asm
+/examples/at89c52_sim/*.asm
+/examples/ai8051u_led/*.asm
+/examples/ai8051u_uart/*.asm
+/examples/ai8051u_zig_led/*.asm
+!/examples/ai8051u_zig_led/crt0.asm
+/examples/ai8051u_zig_asm/*.asm
+!/examples/ai8051u_zig_asm/crt0.asm
+/examples/ai8051u_zig_irq/*.asm
+!/examples/ai8051u_zig_irq/crt0.asm
+/examples/ai8051u_zig_mem/*.asm
+!/examples/ai8051u_zig_mem/crt0.asm
+/examples/ai8051u_zig_buzz/*.asm
+!/examples/ai8051u_zig_buzz/crt0.asm
+/examples/ai8051u_zig_log/*.asm
+!/examples/ai8051u_zig_log/crt0.asm
 # 例外：手工编写的参考 asm（非构建产物）
-!/projects/ai8051u_ptrtest/ptrtest_correct.asm
-!/projects/ai8051u_ptrtest/test_dr28.asm
+!/examples/ai8051u_ptrtest/ptrtest_correct.asm
+!/examples/ai8051u_ptrtest/test_dr28.asm
 
 # ptrtest 调试/构建产物（仅 ptrtest.zig 与 main.c 是源）
-/projects/ai8051u_ptrtest/*.txt
-/projects/ai8051u_ptrtest/*.log
-/projects/ai8051u_ptrtest/*.ihex
-/projects/ai8051u_ptrtest/ptrtest
-/projects/ai8051u_ptrtest/noptr
-/projects/ai8051u_ptrtest/noptr.zig
-/projects/ai8051u_ptrtest/simple
-/projects/ai8051u_ptrtest/simple.zig
-/projects/ai8051u_ptrtest/simplest
-/projects/ai8051u_ptrtest/simplest.zig
-/projects/ai8051u_ptrtest/empty.zig
-/projects/ai8051u_ptrtest/min.ihex
-/projects/ai8051u_ptrtest/min.zig
+/examples/ai8051u_ptrtest/*.txt
+/examples/ai8051u_ptrtest/*.log
+/examples/ai8051u_ptrtest/*.ihex
+/examples/ai8051u_ptrtest/ptrtest
+/examples/ai8051u_ptrtest/noptr
+/examples/ai8051u_ptrtest/noptr.zig
+/examples/ai8051u_ptrtest/simple
+/examples/ai8051u_ptrtest/simple.zig
+/examples/ai8051u_ptrtest/simplest
+/examples/ai8051u_ptrtest/simplest.zig
+/examples/ai8051u_ptrtest/empty.zig
+/examples/ai8051u_ptrtest/min.ihex
+/examples/ai8051u_ptrtest/min.zig
+
+# cobs 主机测试产物
+/lib/cobs/*.exe
 
 # Zig / xmake 构建缓存
 .zig-cache/

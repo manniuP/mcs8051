@@ -3,8 +3,8 @@
 
 用法：
     python tools/keil2sdcc.py \
-        --input-file vendor/stc/AI8051U.keil.h \
-        --output-file include/ai8051u_sfr.h
+        --input-file tools/vendor/stc/AI8051U.keil.h \
+        --output-file lib/include/ai8051u_sfr.h
 
 规则：
     sfr  NAME = 0xNN;            -> SFR(NAME, 0xNN);          （直接 SFR 页）

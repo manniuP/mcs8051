@@ -7,7 +7,7 @@
     sdas/as251/tests/instruction-families.txt
 
 输出：
-    zig/src/codegen/mcs/forms.zig
+    compiler/src/codegen/mcs/forms.zig
 
 用法：
     python gen_mcs_forms.py [--tsv <path>] [--families <path>] [--out <path>]

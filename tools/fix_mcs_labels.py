@@ -3,7 +3,7 @@
 
 背景（见 docs/07-调试笔记）：
     Zig MCS 后端的 `Gen.next_label` 是**每个函数**从 0 重新编号
-    （`zig/src/codegen/mcs/CodeGen.zig` 的 `generate()` 里新建 `Gen`），
+    （`compiler/src/codegen/mcs/CodeGen.zig` 的 `generate()` 里新建 `Gen`），
     而 `Mir` 把它们直接输出为**文件级**全局标签 `L1:`、`L2:`……
     于是同一个 `.asm` 里只要有两个含分支的函数，就会撞标签；
     `sdas251` 报 `<m> multiple definitions` + `<p> phase error`。

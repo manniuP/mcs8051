@@ -18,7 +18,7 @@ Zig MCS 后端负责流水灯图案的计算，两者由 SDCC 工具链链接成
 | `led.zig` | Zig 逻辑：`export fn led_next(u8) u8`，返回下一个灯位（循环左移） |
 | `build.ps1` | 构建脚本：C → `.rel`，Zig → `.asm` → `.rel`，再链接成 `.ihx` |
 
-用到的 AI8051U C 库（`port/stc-hal/`）：
+用到的 AI8051U C 库（`lib/stc-hal/`）：
 
 - `AI8051U_GPIO.h`：`P1_MODE_OUT_PP`、`GPIO_Pin_All` 等端口模式宏；
 - `AI8051U_Delay.c/.h`：`delay_ms()` 软件延时。
@@ -34,7 +34,7 @@ cd examples\ai8051u_blink
 
 - 本机 SDCC 4.5.20（含 `sdcc.exe`、`sdas8051.exe`），默认路径
   `C:\Program Files (x86)\SDCC\bin`；
-- 预编译的 `tools\zig-bootstrap\zig.exe`（55MB，见 [01-环境准备](01-环境准备.md) 第 3 节）。
+- 预编译的 `compiler\zig-out\bin\zig.exe`（55MB，见 [01-环境准备](01-环境准备.md) 第 3 节）。
 
 产物：`blink.asm`/`led.asm`、`*.rel`、`blink.ihx`、`blink.map`。
 
