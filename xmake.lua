@@ -920,6 +920,80 @@ target("zigslice")
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
 
+-- zigns：命名空间同名函数的符号修饰真机自检（fqn 修饰 + 导出 trampoline）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigns
+target("zigns")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigns 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u_zig_ns")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool)
+            end
+        end
+
+        local src_zig  = path.join(scriptdir, "ns.zig")
+        local src_asm  = path.join(scriptdir, "ns.asm")
+        local src_rel  = path.join(scriptdir, "ns.rel")
+        local crt0_rel = path.join(scriptdir, "crt0.rel")
+        local ihx      = path.join(scriptdir, "ns.ihx")
+
+        print("[1/5] Zig -> asm  : ns.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-femit-bin=" .. src_asm})
+
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, src_asm)
+
+        print("[3/5] asm -> rel : ns.asm")
+        os.vrunv(sdas, {"-plosgffw", src_rel, src_asm})
+
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : ns.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        "--data-loc", "0x30", "--idata-loc", "0x80",
+                        crt0_rel, src_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_ns")
+        for _, name in ipairs({"ns.asm", "ns.rel", "ns.lst", "ns.sym", "ns.rst",
+                              "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
+                              "ns.lk", "ns.ihx", "ns.map", "ns.mem"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 zigns")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
 -- zigbuzz：纯 Zig 无源蜂鸣器（P3.6）播放存在 xdata 里的乐谱，验证 xdata 数组分配/读取。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build zigbuzz
 target("zigbuzz")

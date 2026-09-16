@@ -1,10 +1,11 @@
-//! ASxxxx 可重定位文本输出 / SDCC `sdld` 驱动。
+﻿//! ASxxxx 可重定位文本输出 / SDCC `sdld` 驱动。
 //!
 //! 与直接产出目标字节的后端不同，本后端产出 ASxxxx 汇编文本。因此这里不做增量
 //! 链接：`updateFunc` 渲染单个函数并把文本追加到 `assembly`，`flush` 一次性写入
 //! 输出文件（通常为 `.asm`/`.s`），后续由 `sdas251` 汇编、`sdld` 链接。
 //!
-//! 目前只处理函数文本；数据（`updateNav`）与导出重命名尚未实现。
+//! 函数符号按 fqn 修饰（命名空间 → `_`）避免同名冲突，导出名用 trampoline 提供；
+//! 数据符号仍以短名 `_<name>` 导出（`updateNav`）。
 
 const Asx = @This();
 
@@ -17,6 +18,7 @@ const Type = @import("../Type.zig");
 const InternPool = @import("../InternPool.zig");
 const Compilation = @import("../Compilation.zig");
 const codegen = @import("../codegen.zig");
+const mcs = @import("../codegen/mcs/CodeGen.zig");
 const link = @import("../link.zig");
 const AnyMir = codegen.AnyMir;
 
@@ -86,9 +88,8 @@ pub fn updateFunc(
     const gpa = zcu.gpa;
     const ip = &zcu.intern_pool;
     const nav = zcu.funcInfo(func_index).owner_nav;
-    // SDCC C ABI 以 `_` 前缀修饰全局符号（例如 C 的 `main` 对应 `_main`）。
-    const raw_name = ip.getNav(nav).name.toSlice(ip);
-    const name = try std.fmt.allocPrint(gpa, "_{s}", .{raw_name});
+    // 函数符号按 fqn 修饰（命名空间用 `_` 连接），避免同名冲突；导出名由 updateExports 提供。
+    const name = try mcs.mangleNavSymbol(gpa, ip, nav);
     defer gpa.free(name);
 
     var aw: std.Io.Writer.Allocating = .init(gpa);
@@ -152,17 +153,48 @@ pub fn updateNav(
     try asx.assembly.appendSlice(gpa, aw.written());
 }
 
-/// 导出别名重命名尚未实现。
+/// 导出符号：函数体已按 fqn 修饰（`_<mangled>`），这里为每个导出名生成一个 trampoline
+/// `_<export>: ejmp/ljmp _<mangled>`，使 C/启动代码仍能以短名引用（`_main` 等）。
+/// 数据符号由 `updateNav` 直接以 `_<name>` 导出，这里跳过。
 pub fn updateExports(
     asx: *Asx,
     pt: Zcu.PerThread,
     exported: Zcu.Exported,
     export_indices: []const Zcu.Export.Index,
 ) Allocator.Error!void {
-    _ = asx;
-    _ = pt;
-    _ = exported;
-    _ = export_indices;
+    const zcu = pt.zcu;
+    const gpa = zcu.gpa;
+    const ip = &zcu.intern_pool;
+    const nav = switch (exported) {
+        .nav => |n| n,
+        .uav => return,
+    };
+    const resolved = ip.getNav(nav).resolved orelse return;
+    if (Type.fromInterned(resolved.type).zigTypeTag(zcu) != .@"fn") return;
+
+    const target = try mcs.mangleNavSymbol(gpa, ip, nav);
+    defer gpa.free(target);
+
+    const arch = zcu.getTarget().cpu.arch;
+    var aw: std.Io.Writer.Allocating = .init(gpa);
+    defer aw.deinit();
+    const w = &aw.writer;
+    for (export_indices) |idx| {
+        const exp = idx.ptr(zcu);
+        const export_name = exp.opts.name.toSlice(ip);
+        const sym = try std.fmt.allocPrint(gpa, "_{s}", .{export_name});
+        defer gpa.free(sym);
+        if (std.mem.eql(u8, sym, target)) continue; // 已是同一符号，无需 trampoline
+        w.print("\t.area CSEG    (CODE)\n", .{}) catch return error.OutOfMemory;
+        w.print("\t.globl {s}\n", .{sym}) catch return error.OutOfMemory;
+        w.print("{s}:\n", .{sym}) catch return error.OutOfMemory;
+        if (arch == .mcs251) {
+            w.print("\tejmp {s}\n", .{target}) catch return error.OutOfMemory;
+        } else {
+            w.print("\tljmp {s}\n", .{target}) catch return error.OutOfMemory;
+        }
+    }
+    try asx.assembly.appendSlice(gpa, aw.written());
 }
 
 /// 把累积的汇编文本写入输出文件。

@@ -59,6 +59,26 @@ pub fn legalizeFeatures(_: *const std.Target) ?*const Air.Legalize.Features {
     return null;
 }
 
+/// 函数符号名：`_` + `fqn`，其中非标识符字符（主要是命名空间分隔符 `.`）替换为 `_`。
+/// 这样不同命名空间/不同文件的同名函数不会撞标签。**导出**名（`_main` 等）由
+/// `Asx.updateExports` 以 trampoline（`_name: ejmp _mangled`）提供。
+pub fn mangleNavSymbol(
+    gpa: std.mem.Allocator,
+    ip: *const InternPool,
+    nav: InternPool.Nav.Index,
+) std.mem.Allocator.Error![]u8 {
+    const fqn = ip.getNav(nav).fqn.toSlice(ip);
+    var out = try std.ArrayList(u8).initCapacity(gpa, fqn.len + 1);
+    errdefer out.deinit(gpa);
+    out.appendAssumeCapacity('_');
+    for (fqn) |c| {
+        const ok = (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or
+            (c >= '0' and c <= '9') or c == '_';
+        out.appendAssumeCapacity(if (ok) c else '_');
+    }
+    return out.toOwnedSlice(gpa);
+}
+
 /// 运行期下标的元素指针载荷。
 const DynPtr = struct { base: i32, idx: i32, idx_size: u32, elem_size: u32, len: u32 };
 
@@ -2607,20 +2627,19 @@ const Gen = struct {
 
     // --- 调用 ---------------------------------------------------------------
 
-    /// 编译期调用目标的符号名（SDCC C ABI 以 `_` 前缀修饰）；间接调用返回 `null`。
+    /// 编译期调用目标的符号名（Zig 函数用 fqn 修饰，extern 用 SDCC `_` 前缀）；间接调用返回 `null`。
     fn calleeSymbolOpt(gen: *Gen, callee: Air.Inst.Ref) codegen.CodeGenError!?[]const u8 {
         const ip_index = callee.toInterned() orelse return null;
         const ip = &gen.zcu.intern_pool;
-        const raw: []const u8 = switch (ip.indexToKey(ip_index)) {
-            .func => |f| ip.getNav(f.owner_nav).name.toSlice(ip),
+        const name: []const u8 = switch (ip.indexToKey(ip_index)) {
+            .func => |f| try mangleNavSymbol(gen.gpa, ip, f.owner_nav),
             .ptr => |p| switch (p.base_addr) {
-                .nav => |nav| ip.getNav(nav).name.toSlice(ip),
+                .nav => |nav| try mangleNavSymbol(gen.gpa, ip, nav),
                 else => return null,
             },
-            .@"extern" => |e| e.name.toSlice(ip),
+            .@"extern" => |e| try std.fmt.allocPrint(gen.gpa, "_{s}", .{e.name.toSlice(ip)}),
             else => return null,
         };
-        const name = try std.fmt.allocPrint(gen.gpa, "_{s}", .{raw});
         try gen.mir.addOwned(gen.gpa, name);
         return name;
     }
@@ -2845,7 +2864,14 @@ const Gen = struct {
                                 }
                             }
                         }
-                        const name = try std.fmt.allocPrint(gen.gpa, "_{s}", .{n.name.toSlice(ip)});
+                        const is_fn = if (n.resolved) |r|
+                            Type.fromInterned(r.type).zigTypeTag(gen.zcu) == .@"fn"
+                        else
+                            false;
+                        const name = if (is_fn)
+                            try mangleNavSymbol(gen.gpa, ip, nav)
+                        else
+                            try std.fmt.allocPrint(gen.gpa, "_{s}", .{n.name.toSlice(ip)});
                         try gen.mir.addOwned(gen.gpa, name);
                         if (off > std.math.maxInt(u32)) return null;
                         return .{ .sym = .{ .name = name, .space = space, .off = @intCast(off) } };
