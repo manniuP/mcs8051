@@ -16,6 +16,11 @@ function postprocess_asm(projdir, asm)
     if os.isfile(opt) then
         os.vrunv(python, {opt, asm})
     end
+    -- IR 提示消费 + 死 store 消除（mcs251 有效；mcs51 无 @spx，空操作）。
+    local ir = path.join(projdir, "tools/mcs_ir.py")
+    if os.isfile(ir) then
+        os.vrunv(python, {ir, asm})
+    end
     local ovl = path.join(projdir, "tools/mcs_overlay.py")
     if os.isfile(ovl) then
         os.vrunv(python, {ovl, asm})

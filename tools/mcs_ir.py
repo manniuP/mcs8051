@@ -30,11 +30,19 @@ def norm_slot(off):
 def optimize(lines):
     func_starts = [i for i, ln in enumerate(lines) if GFUNC_RE.match(ln)]
 
-    def func_end(i):
+    def func_span(i):
+        start = 0
+        for b in func_starts:
+            if b <= i:
+                start = b
+            else:
+                break
+        end = len(lines)
         for b in func_starts:
             if b > i:
-                return b
-        return len(lines)
+                end = b
+                break
+        return start, end
 
     delete = set()
     for i, ln in enumerate(lines):
@@ -42,10 +50,13 @@ def optimize(lines):
         if not sm:
             continue
         slot = norm_slot(sm.group("off"))
+        start, end = func_span(i)
+        # 关键：扫**整个函数**（含本 store 之前的代码）——循环回边会让“本的 store 之后的读”
+        # 出现在地址更小处；只看后面会误删循环变量。此槽在别处任何出现都算“有人用”。
         used = False
-        for j in range(i + 1, func_end(i)):
-            if lines[j].lstrip().startswith(";"):
-                continue  # 注释（含 IR 提示）里的 @spx 不算使用
+        for j in range(start, end):
+            if j == i or lines[j].lstrip().startswith(";"):
+                continue
             if any(norm_slot(m.group("off")) == slot for m in MEM_RE.finditer(lines[j])):
                 used = True
                 break
@@ -67,7 +78,7 @@ def _self_test():
         "        add spx,#0x0003\n"
         "; v0 arg -> @spx0\n"
         "        mov a,dpl\n"
-        "        mov @spx,a\n"              # 死 store（@spx0 其后无出现）
+        "        mov @spx,a\n"              # 死 store（@spx0 全函数仅此一处）
         "; v2 add_wrap v0 c -> @spx-1\n"
         "        add a,#0x03\n"
         "        mov @spx-0x1,a\n"          # 死 store
@@ -97,6 +108,16 @@ def _self_test():
     )
     txt2 = "".join(optimize(src2.splitlines(keepends=True)))
     assert "mov @spx-0x1,a" in txt2, txt2
+
+    # 循环回边：store 在循环尾、read 在循环头（地址更小）-> 必须保留
+    src3 = (
+        "_f:\n"
+        "        mov @spx-0x1,a\n"          # 循环尾：i = i+1（store 在 read 之后）
+        "        mov a,@spx-0x1\n"          # 循环头：读 i（跳回）
+        "        eret\n"
+    )
+    txt3 = "".join(optimize(src3.splitlines(keepends=True)))
+    assert "mov @spx-0x1,a" in txt3, txt3
     print("mcs_ir: self-test OK")
 
 
