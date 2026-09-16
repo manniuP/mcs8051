@@ -95,7 +95,11 @@ pub inline fn uartInit(comptime fosc: u32, comptime baud: u32) void {
 }
 
 /// 阻塞发送一个字节（等 TI，再清 TI）。
-pub inline fn uartPutc(c: u8) void {
+///
+/// 注意：**非 `inline`**——轮询循环只生成一份，调用点共享，避免每个字节把整段
+/// 循环内联展开（尺寸问题）。带 `comptime` 字面量的 `uartPuts` 仍是 `inline for`，
+/// 逐字符发出 `mov dpl,#c; ecall`。
+pub fn uartPutc(c: u8) void {
     sfrPtr(0x99).* = c; // SBUF
     while ((sfrPtr(0x98).* & 0x02) == 0) {} // 等 TI（SCON.1）
     sfrAnd(0x98, ~@as(u8, 0x02)); // 清 TI
