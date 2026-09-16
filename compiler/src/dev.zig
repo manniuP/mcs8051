@@ -135,6 +135,8 @@ pub const Env = enum {
             },
             .mcs => switch (feature) {
                 .build_obj_command,
+                // 让 mcs-only 产物也能当 `zig build` 的构建驱动（addSystemCommand 需要）。
+                .build_command,
                 .version_command,
                 .targets_command,
                 .env_command,

@@ -48,6 +48,13 @@ option("python")
     set_showmenu(true)
     set_description("Python 解释器（跑 tools/fix_mcs_labels.py、tools/mcs_opt.py）")
 
+-- 设备描述（devices/<vendor>/<part>.toml）：链接布局/启动/SFR 的唯一真源。
+-- 由 tools/mcs_device.py 与 tools/mcs_sfr.py 消费；见 xmake/devices.lua。
+option("device")
+    set_default(os.getenv("MCS_DEVICE") or "devices/stc/ai8051u-34k64.toml")
+    set_showmenu(true)
+    set_description("设备描述 TOML（默认 AI8051U-34K64）")
+
 -- 激进尺寸等级：传 -OReleaseSmall（后端启用条件融合等），默认 -ODebug（保守）。
 option("mcs_small")
     set_default(false)
@@ -112,6 +119,9 @@ target("blink")
         -- [2/4] Zig -> .asm
         print(("[2/4] Zig -> asm  : %s"):format(path.filename(led_zig)))
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         -- zig 默认全局缓存在 %LOCALAPPDATA%\zig\tmp，沙盒或只读环境不可写；
         -- 重定向到当前项目的 .zig-cache 目录。
         local zig_cache = path.join(projdir, ".zig-cache")
@@ -210,6 +220,9 @@ target("ptrtest")
         -- [2/5] Zig -> .asm（ZIG_LIB_DIR 指向带 mcs251 目标定义的 compiler/lib）
         print("[2/5] Zig -> asm : ptrtest.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -288,6 +301,9 @@ target("simtest")
         -- [2/4] Zig -> .asm
         print("[2/4] Zig -> asm : led.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -503,6 +519,9 @@ target("zigled")
         -- [1/5] Zig -> .asm
         print("[1/5] Zig -> asm  : led.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -583,6 +602,9 @@ target("zigasm")
         -- [1/5] Zig -> .asm（sfr.zig 由 led.zig 直接 import，无需单独编译）
         print("[1/5] Zig -> asm  : led.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -661,6 +683,9 @@ target("zigirq")
 
         print("[1/5] Zig -> asm  : isr.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -735,6 +760,9 @@ target("zigirqall")
 
         print("[1/5] Zig -> asm  : irqall.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -807,6 +835,9 @@ target("zighotcold")
 
         print("[1/5] Zig -> asm  : hotcold.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -881,6 +912,9 @@ target("zigmem")
 
         print("[1/5] Zig -> asm  : mem.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -955,6 +989,9 @@ target("zigrtindex")
 
         print("[1/5] Zig -> asm  : rtindex.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -1029,6 +1066,9 @@ target("zigslice")
 
         print("[1/5] Zig -> asm  : slice.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -1103,6 +1143,9 @@ target("zigrtslice")
 
         print("[1/5] Zig -> asm  : rtslice.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -1177,6 +1220,9 @@ target("zigns")
 
         print("[1/5] Zig -> asm  : ns.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -1251,6 +1297,9 @@ target("zigbuzz")
 
         print("[1/5] Zig -> asm  : buzzer.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -1325,6 +1374,9 @@ target("ziglog")
 
         print("[1/5] Zig -> asm  : log.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -1828,3 +1880,6 @@ target("mdu")
         end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
+
+-- 设备驱动目标（见 xmake/devices.lua）：devled / devhdr
+includes("xmake/devices.lua")

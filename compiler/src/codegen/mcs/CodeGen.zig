@@ -124,6 +124,8 @@ const SliceOrigin = struct {
 
 /// 数据空间：`.ptr_rt` 解引用时据此选寻址（xdata=`@dr28`、edata=`movx @dptr`、
 /// data/idata=`@r0`）。
+const device = @import("device.zig");
+
 const SymbolSpace = enum { xdata, data, idata, edata };
 
 /// 一个 AIR 运行期值的位置。
@@ -3067,17 +3069,19 @@ const Gen = struct {
                 const off = add_off + p.byte_offset;
                 switch (p.base_addr) {
                     .nav => |nav| {
+                        // 放置与 `Asx.updateNav` 用同一 `device.decide`（MCS_DEVICE 驱动）。
                         var space: SymbolSpace = .xdata;
                         const n = ip.getNav(nav);
+                        const ls = if (n.resolved) |r| r.@"linksection".toSlice(ip) else null;
+                        var sym_size: u32 = 0;
                         if (n.resolved) |r| {
-                            if (r.@"linksection".toSlice(ip)) |s| {
-                                // `.hot` 视为热变量 → DSEG 直接寻址；`.cold` → 默认 XSEG。
-                                if (std.mem.eql(u8, s, ".data") or std.mem.eql(u8, s, ".hot")) {
-                                    space = .data;
-                                } else if (std.mem.eql(u8, s, ".idata")) {
-                                    space = .idata;
-                                }
-                            }
+                            const t = Type.fromInterned(r.type);
+                            if (t.hasRuntimeBits(gen.zcu)) sym_size = @intCast(t.abiSize(gen.zcu));
+                        }
+                        switch (device.decide(device.get(gen.zcu.comp.environ_map), ls, sym_size)) {
+                            .data => space = .data,
+                            .idata => space = .idata,
+                            .xdata => space = .xdata,
                         }
                         const is_fn = if (n.resolved) |r|
                             Type.fromInterned(r.type).zigTypeTag(gen.zcu) == .@"fn"

@@ -1,45 +1,49 @@
 /*---------------------------------------------------------------------*/
-/* --- Web: www.STCAI.com ---------------------------------------------*/
+/* AI8051U USB-CDC 最小示例：每隔约 1 秒通过 USB-CDC（虚拟串口）打印一行。
+/* 下载时 IRC 设为 24MHz（USB 用内部 48M）。
+/* CDC IN 发送走设备库的 EP1： INDEX=1 -> FIFO1 写字节 -> INCSR1=INIPRDY。
 /*---------------------------------------------------------------------*/
-
-/*************  功能说明    **************
-
-本例程基于AI8051U为主控芯片的实验箱进行编写测试。
-
-使用Keil C251编译器，Memory Model推荐设置XSmall模式，默认定义变量在edata，单时钟存取访问速度快。
-
-edata建议保留1K给堆栈使用，空间不够时可将大数组、不常用变量加xdata关键字定义到xdata空间。
-
-CDC(Communication Device Class)协议范例
-
-WIN10以下的操作系统需要安装sys目录中的驱动程序，WIN10和WIN11免安装驱动
-将代码下载到试验箱后，在PC端可识别为USB转串口的设备
-实现USB-CDC转串口(P4.2,P4.3)功能，USB-CDC接收的数据通过P4.3口输出，P4.2接收的数据发送到USB-CDC
-使用试验箱上的J6接口即可与其它串口进行通讯
-串口的数据位只支持8位，停止位只支持1位
-校验位可支持：无校验、奇校验、偶校验、1校验和0校验
-波特率最高可支持10M，且支持自定义波特率
-
-下载时, 设置IRC工作频率为 24MHz.
-
-******************************************/
 
 #include "usb.h"
 #include "uart.h"
+#include "usb_req_class.h"
+
+/* 约 1 秒忙等（24MHz 下粗调）。 */
+static void delay_1s(void)
+{
+    unsigned int i, j;
+    for (i = 0; i < 2000; i++)
+        for (j = 0; j < 2000; j++)
+            ;
+}
+
+/* 通过 USB-CDC 端点 1 发送一个短字符串（< EP1IN_SIZE）。 */
+static void cdc_puts(const char *s)
+{
+    BYTE i;
+    if (DeviceState != DEVSTATE_CONFIGURED)
+        return;
+    IE2 &= ~0x80;              /* 关 USB 中断，避免与 ISR 争端点 */
+    UsbInBusy = 1;
+    usb_write_reg(INDEX, 1);
+    for (i = 0; s[i] != 0; i++)
+        usb_write_reg(FIFO1, (BYTE)s[i]);
+    usb_write_reg(INCSR1, INIPRDY);
+    IE2 |= 0x80;
+}
 
 void main()
 {
-    WTST = 0;  //设置程序指令延时参数，赋值为0可将CPU执行指令的速度设置为最快
-    P_SW2 |= 0x80; //扩展寄存器(XFR)访问使能
-    CKCON = 0; //提高访问XRAM速度
+    WTST = 0;      /* 指令等待 0，最快 */
+    P_SW2 |= 0x80; /* 使能扩展寄存器(XFR)访问 */
+    CKCON = 0;     /* 提高 XRAM 访问速度 */
 
-    uart_init();
     usb_init();
     EA = 1;
-    
+
     while (1)
     {
-        uart_polling();
+        cdc_puts("hello world\r\n");
+        delay_1s();
     }
 }
-

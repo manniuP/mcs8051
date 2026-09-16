@@ -19,6 +19,7 @@ const InternPool = @import("../InternPool.zig");
 const Compilation = @import("../Compilation.zig");
 const codegen = @import("../codegen.zig");
 const mcs = @import("../codegen/mcs/CodeGen.zig");
+const device = @import("../codegen/mcs/device.zig");
 const link = @import("../link.zig");
 const AnyMir = codegen.AnyMir;
 
@@ -141,20 +142,24 @@ pub fn updateNav(
     var aw: std.Io.Writer.Allocating = .init(gpa);
     defer aw.deinit();
     const w = &aw.writer;
-    // 数据空间/分区由 `linksection` 选择：`.data`/`.hot`→DSEG（直接寻址，快）、
-    // `.idata`→ISEG（@Ri 间接）、`.cold`→独立 COLDX（xdata，与热数据分开便于压缩/后置）、
-    // 其它/默认 → XSEG（xdata）。寻址规则见 CodeGen 的 derefSymbolRead/Write。
-    const area_line: []const u8 = if (resolved.@"linksection".toSlice(ip)) |s|
-        if (std.mem.eql(u8, s, ".data") or std.mem.eql(u8, s, ".hot"))
-            "\t.area DSEG    (DATA)\n"
-        else if (std.mem.eql(u8, s, ".idata"))
-            "\t.area ISEG    (DATA)\n"
-        else if (std.mem.eql(u8, s, ".cold"))
-            "\t.area COLDX   (XDATA)\n"
-        else
-            "\t.area XSEG    (XDATA)\n"
-    else
-        "\t.area XSEG    (XDATA)\n";
+    // 数据空间/分区：`.cold`→独立 COLDX；其余按设备表（`MCS_DEVICE`）放置——
+    // 显式 `linksection`（`.data`/`.hot`→DSEG、`.idata`→ISEG）优先，未标注时
+    // ≤2B→DSEG、其余→设备默认数据空间（多数字号 XSEG/xdata）。与 CodeGen 的
+    // derefSymbolRead/Write 保持一致（同一 `device.decide`）。
+    const ls = resolved.@"linksection".toSlice(ip);
+    const dev = device.get(asx.base.comp.environ_map);
+    const area_line: []const u8 = if (ls) |s| blk: {
+        if (std.mem.eql(u8, s, ".cold")) break :blk "\t.area COLDX   (XDATA)\n";
+        break :blk switch (device.decide(dev, s, size)) {
+            .data => "\t.area DSEG    (DATA)\n",
+            .idata => "\t.area ISEG    (DATA)\n",
+            .xdata => "\t.area XSEG    (XDATA)\n",
+        };
+    } else switch (device.decide(dev, null, size)) {
+        .data => "\t.area DSEG    (DATA)\n",
+        .idata => "\t.area ISEG    (DATA)\n",
+        .xdata => "\t.area XSEG    (XDATA)\n",
+    };
     w.writeAll(area_line) catch return error.OutOfMemory;
     w.print("\t.globl {s}\n", .{name}) catch return error.OutOfMemory;
     w.print("{s}:\n", .{name}) catch return error.OutOfMemory;

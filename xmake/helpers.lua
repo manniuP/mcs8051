@@ -1,3 +1,47 @@
+-- 设备描述（devices/**.toml）→ 构建输入。
+--   device_sdcc_args : 取 `mcs_device.py --emit sdcc-args` 的链接参数（--code-loc/--data-loc/…）
+--   device_emit      : 生成 sdcc 命令文件 / crt0 骨架（写成文件）
+--   device_sfr_header: 由 mcs_sfr.py 生成 SDCC SFR 头（写成文件）
+function device_sdcc_args(projdir, device)
+    local python = get_config("python")
+    local tool = path.join(projdir, "tools/mcs_device.py")
+    local out = os.iorunv(python, {tool, device, "--emit", "sdcc-args"})
+    local args = {}
+    for w in tostring(out):gmatch("%S+") do table.insert(args, w) end
+    return args
+end
+
+function device_emit(projdir, device, emit, outfile, extra)
+    local python = get_config("python")
+    local tool = path.join(projdir, "tools/mcs_device.py")
+    local argv = {tool, device, "--emit", emit}
+    if extra then for _, a in ipairs(extra) do table.insert(argv, a) end end
+    io.writefile(outfile, os.iorunv(python, argv))
+    return outfile
+end
+
+-- 设备内存模型 JSON（内联给后端，供 MCS_DEVICE 环境变量；见 codegen/mcs/device.zig）
+function device_json(projdir, device)
+    local python = get_config("python")
+    local tool = path.join(projdir, "tools/mcs_device.py")
+    local out = tostring(os.iorunv(python, {tool, device, "--emit", "compiler-json"}))
+    return (out:gsub("%s+$", ""))
+end
+
+function device_sfr_header(projdir, device, outfile)
+    local python = get_config("python")
+    local tool = path.join(projdir, "tools/mcs_sfr.py")
+    io.writefile(outfile, os.iorunv(python, {tool, "--device", device, "--emit", "c"}))
+    return outfile
+end
+
+function device_sfr_zig(projdir, device, outfile)
+    local python = get_config("python")
+    local tool = path.join(projdir, "tools/mcs_sfr.py")
+    io.writefile(outfile, os.iorunv(python, {tool, "--device", device, "--emit", "zig"}))
+    return outfile
+end
+
 -- xmake/helpers.lua —— 供 xmake.lua 的 on_build 通过 import("helpers") 复用。
 --
 -- 背景：xmake 的 on_build 在沙箱里执行，**看不到 xmake.lua 脚本级函数**，
