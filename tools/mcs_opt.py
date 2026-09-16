@@ -162,6 +162,14 @@ class Entry:
 def _parse(lines):
     entries = []
     for line in lines:
+        if line.lstrip().startswith(";"):
+            # 整行注释（含后端 IR 提示）：附到上一条，位置不变，且不产生新条目
+            # —— 避免打断 R1/R3/R4/R5 的跨指令模式匹配。
+            if entries:
+                entries[-1].raw += line
+            else:
+                entries.append(Entry("comment", line))
+            continue
         code = line.split(";", 1)[0]
         stripped = code.strip()
         if not stripped:
@@ -367,10 +375,12 @@ def _optimize_once(text: str, rules):
         e = entries[i]
 
         if not e.is_insn:
-            # 屏障：清空状态。标签/指令边界恢复可达；空行/注释不恢复。
+            # 标签/指令边界是屏障；整行注释透明（不影响值编号）；空行清状态。
             if e.kind in ("label", "directive"):
                 dead = False
-            stream.reset()
+                stream.reset()
+            elif e.kind == "blank":
+                stream.reset()
             out.append(e.raw)
             i += 1
             continue

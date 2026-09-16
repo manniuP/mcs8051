@@ -100,6 +100,12 @@ fn isDbgTag(tag: Air.Inst.Tag) bool {
     };
 }
 
+/// IR 提示里的操作数记号：`v<inst>`（运行期值）或 `c`（编译期常量）。
+fn refTok(ref: Air.Inst.Ref, buf: []u8) []const u8 {
+    if (ref.toIndex()) |x| return std.fmt.bufPrint(buf, "v{d}", .{@intFromEnum(x)}) catch "v";
+    return "c";
+}
+
 /// 编译期已知的切片 / 数组视图。
 /// - 局部：`base`/`off` 为帧内对象位移。
 /// - 全局 / 固定地址：`sym`（或 `use_imm`+`imm_base`）非空，`off` 为符号内字节偏移。
@@ -1320,10 +1326,55 @@ const Gen = struct {
 
     // --- 第二遍：发射代码 ---------------------------------------------------
 
+    /// 类 IR 优化提示：每条 AIR 指令前输出 `; v<inst> <tag> <操作数…> [-> @spx<disp>]`。
+    /// 供中间层 `tools/mcs_ir.py` 做值级优化（`sdas` 忽略注释；中间层用完可删）。
+    fn emitTrace(gen: *Gen, inst: Air.Inst.Index, tag: Air.Inst.Tag) codegen.CodeGenError!void {
+        const data = gen.air.instructions.items(.data)[@intFromEnum(inst)];
+        var ops_buf: [96]u8 = undefined;
+        var ab: [16]u8 = undefined;
+        var bb: [16]u8 = undefined;
+        const ops: []const u8 = blk: {
+            switch (tag) {
+                .add, .add_wrap, .add_safe, .sub, .sub_wrap, .sub_safe,
+                .mul, .mul_wrap, .mul_safe, .div_trunc, .div_floor, .div_exact,
+                .mod, .rem, .bit_and, .bit_or, .xor,
+                .cmp_eq, .cmp_neq, .cmp_lt, .cmp_lte, .cmp_gt, .cmp_gte,
+                .bool_and, .bool_or, .shl, .shl_exact, .shr, .shr_exact,
+                => {
+                    const bin = data.bin_op;
+                    break :blk std.fmt.bufPrint(&ops_buf, "{s} {s}", .{
+                        refTok(bin.lhs, &ab), refTok(bin.rhs, &bb),
+                    }) catch "";
+                },
+                .not => break :blk std.fmt.bufPrint(&ops_buf, "{s}", .{refTok(data.un_op, &ab)}) catch "",
+                .intcast, .intcast_safe, .trunc, .bitcast, .load, .slice_len => break :blk std.fmt.bufPrint(&ops_buf, "{s}", .{refTok(data.ty_op.operand, &ab)}) catch "",
+                .cond_br => break :blk std.fmt.bufPrint(&ops_buf, "{s}", .{refTok(gen.air.unwrapCondBr(inst).condition, &ab)}) catch "",
+                else => break :blk "",
+            }
+        };
+        const sep: []const u8 = if (ops.len != 0) " " else "";
+        var line: [192]u8 = undefined;
+        const text: []const u8 = blk: {
+            const mcv = gen.vals[@intFromEnum(inst)];
+            if (mcv == .frame) {
+                break :blk std.fmt.bufPrint(&line, "; v{d} {s}{s}{s} -> @spx{d}", .{
+                    @intFromEnum(inst), @tagName(tag), sep, ops, mcv.frame,
+                }) catch return;
+            }
+            break :blk std.fmt.bufPrint(&line, "; v{d} {s}{s}{s}", .{
+                @intFromEnum(inst), @tagName(tag), sep, ops,
+            }) catch return;
+        };
+        const owned = try gen.gpa.dupe(u8, text);
+        try gen.mir.addOwned(gen.gpa, owned);
+        try gen.mir.addRaw(gen.gpa, owned);
+    }
+
     fn emitBody(gen: *Gen, body: []const Air.Inst.Index) codegen.CodeGenError!void {
         try gen.planFusion(body);
         for (body) |inst| {
             const tag = gen.air.instructions.items(.tag)[@intFromEnum(inst)];
+            try gen.emitTrace(inst, tag);
             // 激进尺寸：条件融合（比较直接出分支）。
             if (gen.fused_br.get(inst)) |bl| {
                 const cb = gen.air.unwrapCondBr(inst);

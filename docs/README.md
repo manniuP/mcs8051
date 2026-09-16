@@ -38,6 +38,9 @@
 - [16-死代码回收mcs_dce](16-死代码回收mcs_dce.md) —— 构建层 `tools/mcs_dce.py`：跨模块可达性
   分析，删除**未被引用**的函数/变量（`sdld` 不回收未用段、C/Zig 同挤一个 CSEG）；`cmd` 实测
   CSEG 21160→18486（-12.6%）。
+- [17-后端IR提示与中间层优化](17-后端IR提示与中间层优化.md) —— 后端在 asm 里夹带类 IR 提示
+  （`; vN …`），中间层 `tools/mcs_ir.py` 做值级**死 store 消除**；先在
+  `examples/vscode_mixed_xmake_zig/` 接入。
 
 源码位置：`../examples/ai8051u_blink/`、`../examples/ai8051u_ptrtest/`
 （3 字节指针互操作见 [07](07-调试笔记-ptr_rt自举崩溃定位.md)）。

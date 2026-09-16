@@ -71,6 +71,7 @@ target("app")
         print("[3/4] asm 后处理 + -> rel : lib.asm")
         os.vrunv(py, {path.join(repo, "tools/fix_mcs_labels.py"), zig_asm})
         os.vrunv(py, {path.join(repo, "tools/mcs_opt.py"), zig_asm})
+        os.vrunv(py, {path.join(repo, "tools/mcs_ir.py"), zig_asm})
         os.vrunv(sdas, {"-plosgffw", zig_rel, zig_asm})
 
         print("[4/4] link -> ihx: app.ihx")

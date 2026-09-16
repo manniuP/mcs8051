@@ -41,10 +41,12 @@ pub fn build(b: *std.Build) void {
     fix.step.dependOn(&z.step);
     const optm = b.addSystemCommand(&.{ "python", "../../tools/mcs_opt.py", "lib.asm" });
     optm.step.dependOn(&fix.step);
+    const ir = b.addSystemCommand(&.{ "python", "../../tools/mcs_ir.py", "lib.asm" });
+    ir.step.dependOn(&optm.step);
 
     // [4] asm -> .rel
     const as = b.addSystemCommand(&.{ paths.sdas, "-plosgffw", "lib.rel", "lib.asm" });
-    as.step.dependOn(&optm.step);
+    as.step.dependOn(&ir.step);
 
     // [5] link -> .ihx
     const link = b.addSystemCommand(&.{
