@@ -86,9 +86,12 @@ const DynPtr = struct { base: i32, idx: i32, idx_size: u32, elem_size: u32, len:
 const FusedCmp = struct { target: u32, jump_if_true: bool };
 const FusedBr = struct { then_label: u32, else_label: u32, end_label: u32 };
 
+/// 可作为 `cond_br` 条件直接出分支的 AIR 指令（`-OReleaseSmall` 条件融合）。
+/// `not`/`bool_and`/`bool_or` 也是「产生 bool」的指令，一并融合，免去物化 0/1。
 fn isFusableCmpTag(tag: Air.Inst.Tag) bool {
     return switch (tag) {
         .cmp_eq, .cmp_neq, .cmp_lt, .cmp_lte, .cmp_gt, .cmp_gte => true,
+        .not, .bool_and, .bool_or => true,
         else => false,
     };
 }
@@ -326,6 +329,12 @@ const Gen = struct {
     fn slotByte(gen: *Gen, disp: i32, i: u32, size: u32) i32 {
         const off: i32 = if (gen.arch == .mcs251) @intCast(size - 1 - i) else @intCast(i);
         return disp + off;
+    }
+
+    /// 内存偏移 `j`（全局/指针/固定地址均为**大端**：mem[0] 为最高字节）
+    /// 对应的帧槽位移（逻辑字节 `size-1-j`）。
+    fn memByteDisp(gen: *Gen, disp: i32, j: u32, size: u32) i32 {
+        return gen.slotByte(disp, size - 1 - j, size);
     }
 
     /// 一个帧槽字节的操作数。
@@ -1387,7 +1396,7 @@ const Gen = struct {
                 continue;
             }
             if (gen.fused_cmp.get(inst)) |fc| {
-                try gen.emitCmpToA(inst, tag);
+                try gen.emitFusedCondToA(inst, tag);
                 try gen.addInst(if (fc.jump_if_true) .jnz else .jz, &.{
                     .{ .code = .{ .local_label = fc.target } },
                 });
@@ -1547,7 +1556,9 @@ const Gen = struct {
             const then_label = gen.newLabel();
             const else_label = gen.newLabel();
             const end_label = gen.newLabel();
-            try gen.fused_cmp.put(gen.gpa, cidx, .{ .target = then_label, .jump_if_true = true });
+            // `not` 的结果为「操作数为 0」，直接对操作数用 `jz`；其余用 `jnz`。
+            const jump_if_true = tags[@intFromEnum(cidx)] != .not;
+            try gen.fused_cmp.put(gen.gpa, cidx, .{ .target = then_label, .jump_if_true = jump_if_true });
             try gen.fused_br.put(gen.gpa, inst, .{
                 .then_label = then_label,
                 .else_label = else_label,
@@ -1687,13 +1698,16 @@ const Gen = struct {
         }
     }
 
-    /// 已知来源的切片视图：描述符或已记录来源的物化切片。
+    /// 已知来源的切片视图：描述符、已记录来源的物化切片，或**内嵌的编译期切片常量**
+    /// （`const s: []u8 = &全局数组;` 没有对应 AIR 指令）。
     fn sliceView(gen: *Gen, ref: Air.Inst.Ref) ?SliceOrigin {
-        if (ref.toIndex()) |i| {
-            if (gen.vals[@intFromEnum(i)] == .slice) {
-                const s = gen.vals[@intFromEnum(i)].slice;
-                return .{ .base = s.base, .off = s.off, .len = s.len };
-            }
+        const idx = ref.toIndex() orelse {
+            const ip = ref.toInterned() orelse return null;
+            return gen.comptimeSliceOrigin(ip);
+        };
+        if (gen.vals[@intFromEnum(idx)] == .slice) {
+            const s = gen.vals[@intFromEnum(idx)].slice;
+            return .{ .base = s.base, .off = s.off, .len = s.len };
         }
         const disp = gen.aggSrcDisp(ref) catch return null;
         return gen.slice_origin.get(disp);
@@ -1913,6 +1927,31 @@ const Gen = struct {
             const v = Value.fromInterned(ip_index);
             if (v.isUndef(gen.zcu)) return;
             if (is_agg) {
+                // 常量切片（`&全局数组`）：把指针 + 长度物化进帧槽（写内存的备用路径）。
+                if (value_ty.isSlice(gen.zcu)) {
+                    if (gen.comptimeSliceOrigin(ip_index)) |o| {
+                        const dst_disp = try gen.storageDisp(bin.lhs);
+                        if (o.use_imm) {
+                            try gen.materializeConstAddr(null, @intCast(@as(i64, o.imm_base) + o.off), dst_disp);
+                        } else if (o.off == 0) {
+                            try gen.materializeConstAddr(o.sym, 0, dst_disp);
+                        } else {
+                            try gen.emitConstAggregateStore(bin.lhs, v, value_ty);
+                            return;
+                        }
+                        const ps = gen.ptrBytes();
+                        var i: u32 = 0;
+                        while (i < ps) : (i += 1) {
+                            try gen.addInst(.mov, &.{
+                                .{ .reg = .a },
+                                .{ .imm = .{ .value = @intCast((o.len >> @intCast(8 * i)) & 0xff), .bits = 8 } },
+                            });
+                            try gen.storeA(.{ .frame = dst_disp + @as(i32, @intCast(ps)) }, i, ps);
+                        }
+                        gen.slice_origin.put(gen.gpa, dst_disp, o) catch {};
+                        return;
+                    }
+                }
                 try gen.emitConstAggregateStore(bin.lhs, v, value_ty);
                 return;
             }
@@ -2225,6 +2264,39 @@ const Gen = struct {
             try gen.addInst(.mov, &.{ .{ .reg = .a }, op });
             try gen.storeA(.{ .frame = dst }, k, ps);
         }
+    }
+
+    /// 把切片视图 `v` 的元素地址（基址 + `byte_off`）物化为 `addr_slot` 处的绝对地址。
+    /// 支持**编译期全局/固定基址**（`sym`/`use_imm`，走 `@dr28` 加常量偏移）与运行期帧基址。
+    fn materializeSliceAddr(
+        gen: *Gen,
+        v: SliceOrigin,
+        byte_off: i32,
+        addr_slot: i32,
+    ) codegen.CodeGenError!void {
+        if (v.use_imm or v.sym.len != 0) {
+            if (gen.arch != .mcs251) return gen.fail(
+                "mcs backend: slices on MCS-51 are not implemented yet",
+                .{},
+            );
+            const tmp = gen.allocFrame(gen.ptrBytes());
+            if (v.sym.len != 0) {
+                try gen.materializeConstAddr(v.sym, 0, tmp);
+            } else {
+                try gen.materializeConstAddr(null, v.imm_base, tmp);
+            }
+            try gen.loadPtrToDr28(.{ .frame = tmp }, 3);
+            const total = v.off + byte_off;
+            if (total > 0) {
+                try gen.addInst(.add, &.{ .{ .reg = .{ .dr = 7 } }, .{ .imm = .{ .value = @intCast(total), .bits = 16 } } });
+            } else if (total < 0) {
+                try gen.addInst(.sub, &.{ .{ .reg = .{ .dr = 7 } }, .{ .imm = .{ .value = @intCast(-total), .bits = 16 } } });
+            }
+            try gen.storeDr28ToFrame(addr_slot, 3);
+            return;
+        }
+        try gen.materializePtrAddr(v.base, v.off + byte_off);
+        try gen.storeDr28ToFrame(addr_slot, 3);
     }
 
     /// `.intcast`/`.trunc`/`.bitcast`：按字节复制，必要时零/符号扩展。
@@ -2821,7 +2893,7 @@ const Gen = struct {
         while (j < size) : (j += 1) {
             try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .at_ri = 0 } });
             try gen.addInst(.mov, &.{
-                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                 .{ .reg = .a },
             });
             if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .{ .r = 0 } }});
@@ -2839,7 +2911,7 @@ const Gen = struct {
         while (j < size) : (j += 1) {
             try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
             try gen.addInst(.mov, &.{
-                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                 .{ .reg = .a },
             });
             if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
@@ -2869,7 +2941,7 @@ const Gen = struct {
         while (j < size) : (j += 1) {
             try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 3 } }, .{ .at_dr = 7 } });
             try gen.addInst(.mov, &.{
-                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                 .{ .reg = .{ .r = 3 } },
             });
             if (j + 1 < size) try gen.addInst(.add, &.{
@@ -3094,7 +3166,7 @@ const Gen = struct {
             while (j < size) : (j += 1) {
                 try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .dir8 = .{ .value = addr + j } } });
                 try gen.addInst(.mov, &.{
-                    gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                    gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                     .{ .reg = .a },
                 });
             }
@@ -3108,7 +3180,7 @@ const Gen = struct {
                 try gen.addInst(.mov, &.{ .{ .reg = .dpxl }, .{ .imm = .{ .value = @intCast((a >> 16) & 0xff), .bits = 8 } } });
                 try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .index = .{ .base = .dpx, .disp = 0 } } });
                 try gen.addInst(.mov, &.{
-                    gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                    gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                     .{ .reg = .a },
                 });
             }
@@ -3119,7 +3191,7 @@ const Gen = struct {
         while (j < size) : (j += 1) {
             try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
             try gen.addInst(.mov, &.{
-                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                 .{ .reg = .a },
             });
             if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
@@ -3174,7 +3246,7 @@ const Gen = struct {
                         try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .index = .{ .base = .dpx, .disp = 0 } } });
                     }
                     try gen.addInst(.mov, &.{
-                        gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                        gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                         .{ .reg = .a },
                     });
                 }
@@ -3184,7 +3256,7 @@ const Gen = struct {
                 while (j < size) : (j += 1) {
                     try gen.addInst(.mov, &.{ .{ .reg = .a }, directOperand(g.name, g.off + j) });
                     try gen.addInst(.mov, &.{
-                        gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                        gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                         .{ .reg = .a },
                     });
                 }
@@ -3195,7 +3267,7 @@ const Gen = struct {
                     try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, immAddrOperand(g.name, g.off + j) });
                     try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .at_ri = 0 } });
                     try gen.addInst(.mov, &.{
-                        gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                        gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                         .{ .reg = .a },
                     });
                 }
@@ -3206,7 +3278,7 @@ const Gen = struct {
                     try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, g.off + j) });
                     try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
                     try gen.addInst(.mov, &.{
-                        gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                        gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                         .{ .reg = .a },
                     });
                 }
@@ -3416,7 +3488,7 @@ const Gen = struct {
         while (j < size) : (j += 1) {
             try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 3 } }, .{ .at_dr = 7 } });
             try gen.addInst(.mov, &.{
-                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                 .{ .reg = .{ .r = 3 } },
             });
             if (j + 1 < size) try gen.addInst(.add, &.{
@@ -3521,8 +3593,7 @@ const Gen = struct {
                 .{},
             );
             const signed: i64 = @bitCast(bits);
-            try gen.materializePtrAddr(v.base, v.off + @as(i32, @intCast(signed * @as(i64, elem_size))));
-            try gen.storeDr28ToFrame(addr_slot, 3);
+            try gen.materializeSliceAddr(v, @intCast(signed * @as(i64, elem_size)), addr_slot);
             return;
         }
         const idx_loc = try gen.locOf(index);
@@ -3536,8 +3607,7 @@ const Gen = struct {
         while (j < v.len) : (j += 1) {
             const no_match = gen.newLabel();
             try gen.emitNeJumpImm(.{ .frame = idx_frame }, j, idx_size, no_match);
-            try gen.materializePtrAddr(v.base, v.off + @as(i32, @intCast(j * elem_size)));
-            try gen.storeDr28ToFrame(addr_slot, 3);
+            try gen.materializeSliceAddr(v, @intCast(j * elem_size), addr_slot);
             try gen.jmpFar(done);
             try gen.mir.addLabel(gen.gpa, no_match);
         }
@@ -3711,7 +3781,7 @@ const Gen = struct {
         while (j < size) : (j += 1) {
             try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 3 } }, .{ .at_dr = 7 } });
             try gen.addInst(.mov, &.{
-                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                gen.frameOperand(gen.memByteDisp(dst_disp, j, size)),
                 .{ .reg = .{ .r = 3 } },
             });
             if (j + 1 < size) try gen.addInst(.add, &.{
@@ -3850,7 +3920,7 @@ const Gen = struct {
         // 4) 退栈（调用者清理）。
         if (total_pushed != 0) {
             if (gen.arch == .mcs251) {
-                try appendAdjust(&gen.mir, gen.gpa, .dec, total_pushed);
+                try appendAdjust(&gen.mir, gen.gpa, .sub, total_pushed);
                 gen.pushed -= @intCast(total_pushed);
             } else {
                 try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .reg = .sp } });
@@ -3892,6 +3962,30 @@ const Gen = struct {
     // --- 比较 ---------------------------------------------------------------
 
     /// 比较并落值到结果帧槽（默认路径）。
+    /// 条件融合：把「条件真值（0/1）」算进 A（不落帧槽），随后 `jnz/jz` 直接测 A。
+    /// `not` 由调用方把跳转改成 `jz`（jump_if_true=false）。
+    fn emitFusedCondToA(gen: *Gen, inst: Air.Inst.Index, tag: Air.Inst.Tag) codegen.CodeGenError!void {
+        switch (tag) {
+            .cmp_eq, .cmp_neq, .cmp_lt, .cmp_lte, .cmp_gt, .cmp_gte => try gen.emitCmpToA(inst, tag),
+            .not => {
+                const ty_op = gen.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
+                try gen.emitCondIntoA(ty_op.operand);
+            },
+            .bool_and => try gen.emitBoolToA(inst, .anl),
+            .bool_or => try gen.emitBoolToA(inst, .orl),
+            else => unreachable,
+        }
+    }
+
+    /// 把 `bool_and`/`bool_or` 的结果算进 A（不落值），供条件融合的 `jnz` 使用。
+    fn emitBoolToA(gen: *Gen, inst: Air.Inst.Index, op: encode.Mnemonic) codegen.CodeGenError!void {
+        const bin = gen.air.instructions.items(.data)[@intFromEnum(inst)].bin_op;
+        const lhs = try gen.locOf(bin.lhs);
+        const rhs = try gen.locOf(bin.rhs);
+        try gen.loadByteToA(lhs, 0, 1);
+        try gen.applyByte(op, rhs, 0, 1, false);
+    }
+
     fn emitCmp(gen: *Gen, inst: Air.Inst.Index, tag: Air.Inst.Tag) codegen.CodeGenError!void {
         const dst = gen.vals[@intFromEnum(inst)];
         try gen.emitCmpToA(inst, tag);
@@ -4324,7 +4418,7 @@ const Gen = struct {
         gen.mir.owned = .empty;
 
         const spx_frame = gen.arch == .mcs251 and frame_size != 0;
-        if (spx_frame) try appendAdjust(&out, gen.gpa, .inc, frame_size);
+        if (spx_frame) try appendAdjust(&out, gen.gpa, .add, frame_size);
 
         var site_idx: usize = 0;
         for (gen.mir.items.items, 0..) |item, idx| {
@@ -4332,7 +4426,7 @@ const Gen = struct {
                 site_idx < gen.epilogue_sites.items.len and
                 gen.epilogue_sites.items[site_idx] == idx)
             {
-                try appendAdjust(&out, gen.gpa, .dec, frame_size);
+                try appendAdjust(&out, gen.gpa, .sub, frame_size);
                 site_idx += 1;
             }
             try out.items.append(gen.gpa, item);
@@ -4342,25 +4436,30 @@ const Gen = struct {
     }
 };
 
-/// 发出 `inc/dec spx` 序列：以 4 字节为主，余下 2、1。
+/// 发出帧指针/参数栈调整。为汇编最短：
+///   - `amount` 恰为 1/2/4 时用 `inc/dec spx[,#imm]`（源 2 字节，比 `add spx,#imm16` 省 2 字节）；
+///   - 其余用单条 `add/sub spx,#imm16`（源 4 字节；优于拆成多条 `inc/dec`），超 0xFFFF 分块。
 fn appendAdjust(mir: *Mir, gpa: std.mem.Allocator, mnemonic: encode.Mnemonic, amount: u32) !void {
+    if (amount == 1 or amount == 2 or amount == 4) {
+        const m: encode.Mnemonic = if (mnemonic == .add) .inc else .dec;
+        if (amount == 1) {
+            try mir.addInst(gpa, m, &.{.{ .reg = .spx }});
+        } else {
+            try mir.addInst(gpa, m, &.{
+                .{ .reg = .spx },
+                .{ .imm = .{ .value = @intCast(amount), .bits = 8 } },
+            });
+        }
+        return;
+    }
     var remaining = amount;
-    while (remaining >= 4) {
+    while (remaining != 0) {
+        const chunk: u32 = @min(remaining, 0xffff);
         try mir.addInst(gpa, mnemonic, &.{
             .{ .reg = .spx },
-            .{ .imm = .{ .value = 4, .bits = 8 } },
+            .{ .imm = .{ .value = @intCast(chunk), .bits = 16 } },
         });
-        remaining -= 4;
-    }
-    if (remaining >= 2) {
-        try mir.addInst(gpa, mnemonic, &.{
-            .{ .reg = .spx },
-            .{ .imm = .{ .value = 2, .bits = 8 } },
-        });
-        remaining -= 2;
-    }
-    if (remaining != 0) {
-        try mir.addInst(gpa, mnemonic, &.{.{ .reg = .spx }});
+        remaining -= chunk;
     }
 }
 

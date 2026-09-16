@@ -41,6 +41,9 @@
 - [17-后端IR提示与中间层优化](17-后端IR提示与中间层优化.md) —— 后端在 asm 里夹带类 IR 提示
   （`; vN …`），中间层 `tools/mcs_ir.py` 做值级**死 store 消除**；先在
   `examples/vscode_mixed_xmake_zig/` 接入。
+- [18-后端尺寸与mcs51多字节端序](18-后端尺寸与mcs51多字节端序.md) —— `appendAdjust` 单条
+  `add/sub spx,#imm16`、`-OReleaseSmall` 条件融合扩展（`.not`/`.bool_and`/`.bool_or`）、
+  **MCS-51 多字节内存读端序修复**（`memByteDisp`）、延伸的 mcs51 自检。
 
 源码位置：`../examples/ai8051u_blink/`、`../examples/ai8051u_ptrtest/`
 （3 字节指针互操作见 [07](07-调试笔记-ptr_rt自举崩溃定位.md)）。

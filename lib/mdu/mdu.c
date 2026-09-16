@@ -30,6 +30,7 @@ unsigned long mdu_mul32(unsigned long a, unsigned long b)
     mdu_s[6] = b >> 8;
     mdu_s[7] = b;
 
+#ifndef __SDCC_STUB__
     __asm
         mov a,_mdu_s+0
         mov r4,a
@@ -57,6 +58,7 @@ unsigned long mdu_mul32(unsigned long a, unsigned long b)
         mov a,r7
         mov _mdu_s+3,a
     __endasm;
+#endif
 
     return mdu_get(mdu_s);
 }
@@ -73,6 +75,7 @@ static void mdu_div_core(unsigned long a, unsigned long b)
     mdu_s[6] = b >> 8;
     mdu_s[7] = b;
 
+#ifndef __SDCC_STUB__
     __asm
         mov a,_mdu_s+0
         mov r4,a
@@ -108,6 +111,7 @@ static void mdu_div_core(unsigned long a, unsigned long b)
         mov a,r3
         mov _mdu_s+7,a
     __endasm;
+#endif
 }
 
 unsigned long mdu_div32u(unsigned long a, unsigned long b)
@@ -137,6 +141,7 @@ static void mdu_sdiv_core(long a, long b)
     mdu_s[6] = ub >> 8;
     mdu_s[7] = ub;
 
+#ifndef __SDCC_STUB__
     __asm
         mov a,_mdu_s+0
         mov r4,a
@@ -172,6 +177,7 @@ static void mdu_sdiv_core(long a, long b)
         mov a,r3
         mov _mdu_s+7,a
     __endasm;
+#endif
 }
 
 long mdu_div32s(long a, long b)

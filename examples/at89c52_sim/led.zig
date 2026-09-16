@@ -49,3 +49,22 @@ export fn wr_fixed(v: u8) void {
 export fn rd_fixed() u8 {
     return (@as(*volatile u8, @ptrFromInt(0x8020))).*;
 }
+
+/// 普通 u8/u16 全局（xdata）。运行期赋值（freestanding 下全局初始化器不生效）。
+var gx: u8 = 0;
+var gy: u16 = 0;
+
+/// 综合算术：u16 加/移位 + 全局 u8/u16 读写 + u8 截断/异或 —— 覆盖 8 位的多字节读写。
+/// 期望值：0x0100+0x00FF=0x01FF；<<1=0x03FE；>>2=0x00FF；
+/// (0xFF ^ gx=3)=0xFC；+ @truncate(gy=0x1234)=0xFC+0x34=0x30。
+export fn mix_test() u8 {
+    gx = 3;
+    gy = 0x1234;
+    var v: u16 = 0x0100;
+    v +%= 0x00FF;
+    v <<= 1;
+    v >>= 2;
+    var r: u8 = @as(u8, @truncate(v)) ^ gx;
+    r +%= @as(u8, @truncate(gy));
+    return r;
+}

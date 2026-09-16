@@ -27,6 +27,7 @@ extern u8 counter;                   /* Zig 定义的全局 */
 extern u8 bump(void);
 extern void wr_fixed(u8 v);          /* 固定 xdata 地址（@ptrFromInt） */
 extern u8 rd_fixed(void);
+extern u8 mix_test(void);            /* u16 算术/移位 + 静态结构体 */
 
 __xdata __at(0x8000) volatile u8 status;
 __xdata __at(0x8001) volatile u8 failcode;
@@ -76,6 +77,11 @@ void main(void)
     wr_fixed(0x5a);
     if (failcode == 0 && rd_fixed() != 0x5a) {
         failcode = 0x50;
+    }
+
+    /* 综合算术：u16 加/移位 + 全局 u8/u16 读写（期望 0x30）。 */
+    if (failcode == 0 && mix_test() != 0x30) {
+        failcode = 0x60;
     }
 
     status = (failcode == 0) ? 0xAA : 0x55;
