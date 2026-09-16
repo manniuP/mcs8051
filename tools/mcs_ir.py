@@ -7,6 +7,9 @@
   1) **全函数死 store（帧槽从不被读）**：`mov @spx<d>,X` 若 `@spx<d>` 在该函数内**从不被读**
      （只被写）→ 删掉（同一槽被写多次但从不读时，这些 store 全删）。扫描必须覆盖**整个函数**
      （含循环回边：循环尾 store、循环头 read 在更小地址处），只看 store 之后会误删循环变量。
+     **含 `push/pop`/`spx` 调整的函数整体跳过**：帧槽相对 SPX，push/pop 会移动 SPX，使同一逻辑槽
+     的**文本偏移改变**（如 `-0x10` 在 `push acc` 后读作 `-0x11`），按文本偏移判读会误删
+     （`ziglog` 的压栈传参即中招）。见 `_spx_moves`。
 
   2) **基本块内死写（DSE）**：在直线块内，`mov L,X`（L 为 `@spx<d>` 或寄存器）若其**下一次
      访问 L** 也是写（值在被读前就被覆盖），则这条写是死写 → 删掉。块以标签/分支/调用/返回
@@ -312,19 +315,42 @@ def _func_span(starts, i, n):
     return start, end
 
 
+def _spx_moves(lines, start, end):
+    """函数区间内是否有 `push`/`pop`（会让 `@spx<d>` 文本偏移失真）。
+
+    后端帧槽相对 SPX：`push`/`pop`（压栈传参、DR28 搬运等）移动 SPX，使同一条**逻辑帧槽**
+    在不同位置的**文本偏移不同**（例：`-0x10` 在 `push acc` 之后读作 `-0x11`）。按文本偏移判
+    「从不被读」会误删这类 store（`ziglog` 的压栈传参即中招）。故这类函数**整体跳过**全函数
+    死槽规则（块内 DSE 已把 push/pop 当屏障，安全）。
+    只需 `push/pop`：序言/尾声的 `add/sub spx,#frame` 在首尾、不影响函数内偏移；调用者清理的
+    `sub spx,#n` 必随 `push` 出现。
+    """
+    for j in range(start, end):
+        code = lines[j].split(";", 1)[0].strip().lower()
+        if code.startswith("push") or code.startswith("pop"):
+            return True
+    return False
+
+
 def _whole_slot_dead(lines):
     """规则 1：帧槽在整个函数内**从不被读**（只写）-> 该 store 是死 store。
 
     比“槽从不出现”更强：一个槽被写多次但从不读时，**所有**这些 store 都可删。
+    含 `push/pop/spx` 调整的函数因文本偏移不可靠而整体跳过（见 `_spx_moves`）。
     """
     starts = _func_starts(lines)
     delete = set()
+    span_moves = {}
     for i, ln in enumerate(lines):
         sm = STORE_RE.match(ln)
         if not sm:
             continue
         slot = norm_slot(sm.group("off"))
         start, end = _func_span(starts, i, len(lines))
+        if start not in span_moves:
+            span_moves[start] = _spx_moves(lines, start, end)
+        if span_moves[start]:
+            continue
         read = False
         for j in range(start, end):
             if j == i or lines[j].lstrip().startswith(";"):
@@ -589,6 +615,18 @@ def _self_test():
     )
     txt = "".join(optimize(src.splitlines(keepends=True)))
     assert txt.count("mov @spx-0x1,a") == 2, txt
+
+    # 11) 含 push/pop 的函数跳过死槽规则（SPX 位移致文本偏移失真）-> store 须保留。
+    src = (
+        "_f:\n"
+        "        push acc\n"
+        "        mov a,#0x12\n"
+        "        mov @spx-0x10,a\n"
+        "        pop acc\n"
+        "        eret\n"
+    )
+    txt = "".join(optimize(src.splitlines(keepends=True)))
+    assert "mov @spx-0x10,a" in txt, txt
 
     # 9) 读-改-写要算“读”：store 后的 `mov a,@spx` 被 `subb a,#imm` 读过，须保留。
     src = (
