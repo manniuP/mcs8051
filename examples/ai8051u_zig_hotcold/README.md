@@ -5,7 +5,7 @@
 | 标注 | 对象 | 后端行为 |
 | --- | --- | --- |
 | `linksection(".hot")` | 变量 | → **DSEG**，直接寻址 `mov a,_sym`（快） |
-| `linksection(".cold")` | 变量 | → **XSEG**（xdata），`mov dpxl/… @dpx`（省 direct 区，慢无妨） |
+| `linksection(".cold")` | 变量 | → 独立 **`COLDX` 区**（xdata），`mov dpxl/… @dpx`（省 direct 区，便于整体压缩/后置） |
 | `linksection(".hot")` | 函数 | 保持 `CSEG`（热代码）；要真内联请写 `inline fn` |
 | `linksection(".cold")` | 函数 | 归入独立 **`COLD` 代码区**（可与热代码分开，便于整体压缩/后置） |
 

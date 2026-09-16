@@ -141,13 +141,16 @@ pub fn updateNav(
     var aw: std.Io.Writer.Allocating = .init(gpa);
     defer aw.deinit();
     const w = &aw.writer;
-    // 数据空间由 `linksection` 选择：`.data`/`.hot`→DSEG（直接寻址）、`.idata`→ISEG（@Ri 间接）、
-    // 其它/默认/`.cold` → XSEG（xdata）。对应访问寻址见 CodeGen 的 derefSymbolRead/Write。
+    // 数据空间/分区由 `linksection` 选择：`.data`/`.hot`→DSEG（直接寻址，快）、
+    // `.idata`→ISEG（@Ri 间接）、`.cold`→独立 COLDX（xdata，与热数据分开便于压缩/后置）、
+    // 其它/默认 → XSEG（xdata）。寻址规则见 CodeGen 的 derefSymbolRead/Write。
     const area_line: []const u8 = if (resolved.@"linksection".toSlice(ip)) |s|
         if (std.mem.eql(u8, s, ".data") or std.mem.eql(u8, s, ".hot"))
             "\t.area DSEG    (DATA)\n"
         else if (std.mem.eql(u8, s, ".idata"))
             "\t.area ISEG    (DATA)\n"
+        else if (std.mem.eql(u8, s, ".cold"))
+            "\t.area COLDX   (XDATA)\n"
         else
             "\t.area XSEG    (XDATA)\n"
     else
