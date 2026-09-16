@@ -776,8 +776,9 @@ const Gen = struct {
             else => return gen.fail("mcs backend: runtime index has no frame slot", .{}),
         };
         const idx_size: u32 = try gen.scalarSize(gen.air.typeOf(idx_ref, &gen.zcu.intern_pool));
-        if (idx_size > gen.ptrBytes()) return gen.fail(
-            "mcs backend: runtime index is wider than a pointer",
+        // 下标可比指针宽（如 u32 对 3 字节指针）：地址空间 24 位，只取其低 `ptrBytes()` 字节。
+        if (idx_size > 4) return gen.fail(
+            "mcs backend: runtime index wider than 4 bytes is not supported",
             .{},
         );
         const addr = gen.allocFrame(gen.ptrBytes());
@@ -885,8 +886,9 @@ const Gen = struct {
                 "mcs backend: runtime index element size must be 1..255 bytes",
                 .{},
             );
-            if (idx_size > gen.ptrBytes()) return gen.fail(
-                "mcs backend: runtime index is wider than a pointer",
+            // 下标可比指针宽：只取其低 `ptrBytes()` 字节（地址空间 24 位）。
+            if (idx_size > 4) return gen.fail(
+                "mcs backend: runtime index wider than 4 bytes is not supported",
                 .{},
             );
             const new_addr = gen.allocFrame(gen.ptrBytes());
@@ -1174,8 +1176,9 @@ const Gen = struct {
                         else => return gen.fail("mcs backend: runtime index has no frame slot", .{}),
                     };
                     const idx_size: u32 = try gen.scalarSize(gen.air.typeOf(bin.rhs, &gen.zcu.intern_pool));
-                    if (idx_size > gen.ptrBytes()) return gen.fail(
-                        "mcs backend: runtime offset is wider than a pointer",
+                    // 下标可比指针宽：只取其低 `ptrBytes()` 字节（地址空间 24 位）。
+                    if (idx_size > 4) return gen.fail(
+                        "mcs backend: runtime index wider than 4 bytes is not supported",
                         .{},
                     );
                     const base_addr: i32 = switch (src) {
