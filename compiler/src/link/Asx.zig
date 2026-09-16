@@ -92,13 +92,19 @@ pub fn updateFunc(
     const name = try mcs.mangleNavSymbol(gpa, ip, nav);
     defer gpa.free(name);
 
+    // `.cold` 函数归入独立的 `COLD` 代码区（便于整体压缩/后置），其余进 `CSEG`。
+    const is_cold = if (ip.getNav(nav).resolved) |r| blk: {
+        const s = r.@"linksection".toSlice(ip) orelse break :blk false;
+        break :blk std.mem.eql(u8, s, ".cold");
+    } else false;
+
     var aw: std.Io.Writer.Allocating = .init(gpa);
     defer aw.deinit();
     const w = &aw.writer;
 
     // 函数头：代码区、全局符号与标签。
     // 使用 SDCC/ASxxxx 约定的代码区名 `CSEG`。
-    w.writeAll("\t.area CSEG    (CODE)\n") catch return error.OutOfMemory;
+    w.writeAll(if (is_cold) "\t.area COLD    (CODE)\n" else "\t.area CSEG    (CODE)\n") catch return error.OutOfMemory;
     w.print("\t.globl {s}\n", .{name}) catch return error.OutOfMemory;
     w.print("{s}:\n", .{name}) catch return error.OutOfMemory;
 
@@ -135,10 +141,10 @@ pub fn updateNav(
     var aw: std.Io.Writer.Allocating = .init(gpa);
     defer aw.deinit();
     const w = &aw.writer;
-    // 数据空间由 `linksection` 选择：`.data`→DSEG（直接寻址）、`.idata`→ISEG（@Ri 间接）、
-    // 其它/默认 → XSEG（xdata）。对应访问寻址见 CodeGen 的 derefSymbolRead/Write。
+    // 数据空间由 `linksection` 选择：`.data`/`.hot`→DSEG（直接寻址）、`.idata`→ISEG（@Ri 间接）、
+    // 其它/默认/`.cold` → XSEG（xdata）。对应访问寻址见 CodeGen 的 derefSymbolRead/Write。
     const area_line: []const u8 = if (resolved.@"linksection".toSlice(ip)) |s|
-        if (std.mem.eql(u8, s, ".data"))
+        if (std.mem.eql(u8, s, ".data") or std.mem.eql(u8, s, ".hot"))
             "\t.area DSEG    (DATA)\n"
         else if (std.mem.eql(u8, s, ".idata"))
             "\t.area ISEG    (DATA)\n"

@@ -60,6 +60,8 @@
 !/examples/ai8051u_zig_irq_all/crt0.asm
 /examples/ai8051u_zig_mem/*.asm
 !/examples/ai8051u_zig_mem/crt0.asm
+/examples/ai8051u_zig_hotcold/*.asm
+!/examples/ai8051u_zig_hotcold/crt0.asm
 /examples/ai8051u_zig_buzz/*.asm
 !/examples/ai8051u_zig_buzz/crt0.asm
 /examples/ai8051u_zig_log/*.asm

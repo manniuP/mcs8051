@@ -2945,7 +2945,8 @@ const Gen = struct {
                         const n = ip.getNav(nav);
                         if (n.resolved) |r| {
                             if (r.@"linksection".toSlice(ip)) |s| {
-                                if (std.mem.eql(u8, s, ".data")) {
+                                // `.hot` 视为热变量 → DSEG 直接寻址；`.cold` → 默认 XSEG。
+                                if (std.mem.eql(u8, s, ".data") or std.mem.eql(u8, s, ".hot")) {
                                     space = .data;
                                 } else if (std.mem.eql(u8, s, ".idata")) {
                                     space = .idata;

@@ -776,6 +776,80 @@ target("zigirqall")
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
 
+-- zighotcold：热/冷频次注解（linksection ".hot"/".cold"）驱动变量位置 + 冷函数分区。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zighotcold
+target("zighotcold")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zighotcold 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u_zig_hotcold")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool)
+            end
+        end
+
+        local src_zig  = path.join(scriptdir, "hotcold.zig")
+        local src_asm  = path.join(scriptdir, "hotcold.asm")
+        local src_rel  = path.join(scriptdir, "hotcold.rel")
+        local crt0_rel = path.join(scriptdir, "crt0.rel")
+        local ihx      = path.join(scriptdir, "hotcold.ihx")
+
+        print("[1/5] Zig -> asm  : hotcold.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-femit-bin=" .. src_asm})
+
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, src_asm)
+
+        print("[3/5] asm -> rel : hotcold.asm")
+        os.vrunv(sdas, {"-plosgffw", src_rel, src_asm})
+
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : hotcold.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        "--data-loc", "0x30", "--idata-loc", "0x80",
+                        crt0_rel, src_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_hotcold")
+        for _, name in ipairs({"hotcold.asm", "hotcold.rel", "hotcold.lst", "hotcold.sym", "hotcold.rst",
+                              "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
+                              "hotcold.lk", "hotcold.ihx", "hotcold.map", "hotcold.mem"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 zighotcold")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
 -- zigmem：纯 Zig 演示用 linksection 把变量放到 data / idata / xdata 三个空间。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build zigmem
 target("zigmem")
