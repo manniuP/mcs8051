@@ -113,7 +113,8 @@ pub inline fn uartPuts(comptime s: []const u8) void {
 }
 
 /// 打印一个字节为两位十六进制（如 `0xA1` → "a1"）。
-pub inline fn uartPutHex2(v: u8) void {
+/// 非 `inline`：`hexDigit` 的分支只生成一份，调用点共享（尺寸考虑，同 `uartPutc`）。
+pub fn uartPutHex2(v: u8) void {
     uartPutc(hexDigit(v >> 4));
     uartPutc(hexDigit(v & 0x0f));
 }
