@@ -62,8 +62,18 @@ pub fn legalizeFeatures(_: *const std.Target) ?*const Air.Legalize.Features {
 /// 运行期下标的元素指针载荷。
 const DynPtr = struct { base: i32, idx: i32, idx_size: u32, elem_size: u32, len: u32 };
 
-/// 物化切片的来源（编译期已知的数组视图），按切片存储位移索引。
-const SliceOrigin = struct { base: i32, off: i32, len: u32 };
+/// 编译期已知的切片 / 数组视图。
+/// - 局部：`base`/`off` 为帧内对象位移。
+/// - 全局 / 固定地址：`sym`（或 `use_imm`+`imm_base`）非空，`off` 为符号内字节偏移。
+const SliceOrigin = struct {
+    base: i32 = 0,
+    off: i32 = 0,
+    len: u32,
+    sym: []const u8 = &.{},
+    use_imm: bool = false,
+    imm_base: u32 = 0,
+    space: SymbolSpace = .xdata,
+};
 
 /// 数据空间：`.ptr_rt` 解引用时据此选寻址（xdata=`@dr28`、edata=`movx @dptr`、
 /// data/idata=`@r0`）。
@@ -1528,6 +1538,40 @@ const Gen = struct {
         }
         const disp = gen.aggSrcDisp(ref) catch return null;
         return gen.slice_origin.get(disp);
+    }
+
+    /// 编译期切片值 / 指向数组的指针 → 全局或固定地址视图；否则 `null`。
+    /// 处理 `const s: []const u8 = &arr;` 这类没有 AIR 指令、直接内嵌的切片值。
+    fn comptimeSliceOrigin(gen: *Gen, ip_index: InternPool.Index) ?SliceOrigin {
+        const ip = &gen.zcu.intern_pool;
+        const ty = Value.fromInterned(ip_index).typeOf(gen.zcu);
+        if (ty.zigTypeTag(gen.zcu) != .pointer) return null;
+        var ptr_ip = ip_index;
+        var len: u32 = 0;
+        if (ty.isSlice(gen.zcu)) {
+            ptr_ip = ip.slicePtr(ip_index);
+            len = @intCast(Value.fromInterned(ip.sliceLen(ip_index)).toUnsignedInt(gen.zcu));
+        } else {
+            const child = ty.childType(gen.zcu);
+            if (child.zigTypeTag(gen.zcu) != .array) return null;
+            len = @intCast(child.arrayLen(gen.zcu));
+        }
+        const target = (gen.resolvePtrIndex(ptr_ip, 0) catch return null) orelse return null;
+        switch (target) {
+            .sym => |g| return .{
+                .off = @intCast(g.off),
+                .len = len,
+                .sym = g.name,
+                .space = g.space,
+            },
+            .imm => |a| return .{
+                .off = 0,
+                .len = len,
+                .use_imm = true,
+                .imm_base = a,
+                .space = spaceOfAddr(a),
+            },
+        }
     }
 
     /// 按运行期下标展开访问：对每个可能的常量下标比较并访问对应帧偏移。
@@ -3162,6 +3206,13 @@ const Gen = struct {
         const bin = gen.air.instructions.items(.data)[@intFromEnum(inst)].bin_op;
         const elem_ty = gen.air.typeOfIndex(inst, &gen.zcu.intern_pool);
         const size = try gen.scalarSize(elem_ty);
+        // 编译期切片值（`const s: []const u8 = &arr;`，无 AIR 指令）的全局/固定地址视图。
+        if (bin.lhs.toInterned()) |ip_index| {
+            if (gen.comptimeSliceOrigin(ip_index)) |gv| {
+                try gen.emitSliceElemValGlobal(gv, bin.rhs, size, gen.vals[@intFromEnum(inst)].frame);
+                return;
+            }
+        }
         if (gen.sliceView(bin.lhs)) |v| {
             if (bin.rhs.toInterned()) |idx_ip| {
                 const bits = gen.getConstBits(idx_ip) orelse return gen.fail(
@@ -3206,6 +3257,67 @@ const Gen = struct {
                 .{ .reg = .{ .dr = 7 } },
                 .{ .imm = .{ .value = 1, .bits = 16 } },
             });
+        }
+    }
+
+    /// 全局/固定地址切片视图取元素值：编译期下标直接读；运行期下标按长度展开分派。
+    fn emitSliceElemValGlobal(
+        gen: *Gen,
+        v: SliceOrigin,
+        index: Air.Inst.Ref,
+        size: u32,
+        dst_disp: i32,
+    ) codegen.CodeGenError!void {
+        if (index.toInterned()) |idx_ip| {
+            const bits = gen.getConstBits(idx_ip) orelse return gen.fail(
+                "mcs backend: unsupported slice index",
+                .{},
+            );
+            const signed: i64 = @bitCast(bits);
+            const elem_off = v.off + @as(i32, @intCast(signed * @as(i64, size)));
+            return gen.readSliceGlobalElem(v, elem_off, size, dst_disp);
+        }
+        const idx_loc = try gen.locOf(index);
+        const idx_frame = switch (idx_loc) {
+            .frame => |d| d,
+            else => return gen.fail("mcs backend: runtime index has no frame slot", .{}),
+        };
+        const idx_size: u32 = try gen.scalarSize(gen.air.typeOf(index, &gen.zcu.intern_pool));
+        const done = gen.newLabel();
+        var j: u32 = 0;
+        while (j < v.len) : (j += 1) {
+            const no_match = gen.newLabel();
+            try gen.emitNeJumpImm(.{ .frame = idx_frame }, j, idx_size, no_match);
+            try gen.readSliceGlobalElem(v, v.off + @as(i32, @intCast(j * size)), size, dst_disp);
+            try gen.jmpFar(done);
+            try gen.mir.addLabel(gen.gpa, no_match);
+        }
+        // 越界：与运行时界检查一致，兜底 trap。
+        try gen.addTrap();
+        try gen.mir.addLabel(gen.gpa, done);
+    }
+
+    /// 从全局/固定地址切片视图的 `elem_off` 处读 `size` 字节到帧槽 `dst_disp`（内存序）。
+    fn readSliceGlobalElem(
+        gen: *Gen,
+        v: SliceOrigin,
+        elem_off: i32,
+        size: u32,
+        dst_disp: i32,
+    ) codegen.CodeGenError!void {
+        if (elem_off < 0) return gen.fail("mcs backend: negative slice element offset", .{});
+        if (v.sym.len != 0) {
+            try gen.derefSymbolRead(
+                .{ .name = v.sym, .space = v.space, .off = @intCast(elem_off) },
+                size,
+                dst_disp,
+            );
+        } else {
+            if (elem_off > std.math.maxInt(u32) - v.imm_base) return gen.fail(
+                "mcs backend: slice element address overflow",
+                .{},
+            );
+            try gen.derefFixedRead(v.imm_base + @as(u32, @intCast(elem_off)), size, dst_disp);
         }
     }
 
