@@ -48,6 +48,12 @@ option("python")
     set_showmenu(true)
     set_description("Python 解释器（跑 tools/fix_mcs_labels.py、tools/mcs_opt.py）")
 
+-- 激进尺寸等级：传 -OReleaseSmall（后端启用条件融合等），默认 -ODebug（保守）。
+option("mcs_small")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Zig 后端激进尺寸（-OReleaseSmall）：条件融合等，仅 mcs251 纯 Zig 目标")
+
 -- Zig 后端生成的 .asm 在构建层做后处理（无需重编 zig.exe）：
 --   1) fix_mcs_labels.py：按函数给局部标签 L<n> 加前缀，消除跨函数重名；
 --   2) mcs_opt.py：局部优化瘦身（合并 spx 调整、冗余 mov、常量转发）。
@@ -111,7 +117,7 @@ target("blink")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", target_flag, "-femit-bin=" .. led_asm, led_zig})
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", target_flag, "-femit-bin=" .. led_asm, led_zig})
 
         -- [2.5/4] 修局部标签重名：后端每个函数从 0 重新编号 L<n>，同一 .asm 内
         -- 多个含分支的函数会撞名（sdas 报 multiple definitions / phase error）。
@@ -207,7 +213,7 @@ target("ptrtest")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding", "-femit-bin=" .. zig_asm, zig_src})
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding", "-femit-bin=" .. zig_asm, zig_src})
 
         -- [3/5] 修局部标签重名（同 blink；见 tools/fix_mcs_labels.py）
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -285,7 +291,7 @@ target("simtest")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs51-freestanding", "-femit-bin=" .. zig_asm, zig_src})
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs51-freestanding", "-femit-bin=" .. zig_asm, zig_src})
 
         -- [2.5/4] 修局部标签重名
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -500,7 +506,7 @@ target("zigled")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "-Mroot=" .. led_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. led_asm})
@@ -580,7 +586,7 @@ target("zigasm")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "-Mroot=" .. led_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. led_asm})
@@ -658,7 +664,7 @@ target("zigirq")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "-Mroot=" .. isr_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. isr_asm})
@@ -732,7 +738,7 @@ target("zigmem")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "-Mroot=" .. mem_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. mem_asm})
@@ -806,7 +812,7 @@ target("zigrtindex")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. src_asm})
@@ -880,7 +886,7 @@ target("zigslice")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. src_asm})
@@ -954,7 +960,7 @@ target("zigns")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. src_asm})
@@ -1028,7 +1034,7 @@ target("zigbuzz")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-femit-bin=" .. src_asm})
@@ -1102,7 +1108,7 @@ target("ziglog")
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
-        os.vrunv(zig, {"build-obj", "-target", "mcs251-freestanding",
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
                        "--dep", "mcs", "--dep", "cobs", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
                        "-Mcobs=" .. path.join(projdir, "lib/cobs/cobs.zig"),

@@ -82,6 +82,24 @@ pub fn mangleNavSymbol(
 /// 运行期下标的元素指针载荷。
 const DynPtr = struct { base: i32, idx: i32, idx_size: u32, elem_size: u32, len: u32 };
 
+/// 激进尺寸（`-OReleaseSmall`）：条件融合 —— 比较紧跟 `cond_br` 时直接出分支，不物化 bool。
+const FusedCmp = struct { target: u32, jump_if_true: bool };
+const FusedBr = struct { then_label: u32, else_label: u32, end_label: u32 };
+
+fn isFusableCmpTag(tag: Air.Inst.Tag) bool {
+    return switch (tag) {
+        .cmp_eq, .cmp_neq, .cmp_lt, .cmp_lte, .cmp_gt, .cmp_gte => true,
+        else => false,
+    };
+}
+
+fn isDbgTag(tag: Air.Inst.Tag) bool {
+    return switch (tag) {
+        .dbg_stmt, .dbg_empty_stmt, .dbg_inline_block, .dbg_var_ptr, .dbg_var_val, .dbg_arg_inline => true,
+        else => false,
+    };
+}
+
 /// 编译期已知的切片 / 数组视图。
 /// - 局部：`base`/`off` 为帧内对象位移。
 /// - 全局 / 固定地址：`sym`（或 `use_imm`+`imm_base`）非空，`off` 为符号内字节偏移。
@@ -184,6 +202,10 @@ const Gen = struct {
     switch_info: std.AutoHashMapUnmanaged(Air.Inst.Index, SwitchInfo) = .empty,
     extra_slots: std.AutoHashMapUnmanaged(u64, i32) = .empty,
     slice_origin: std.AutoHashMapUnmanaged(i32, SliceOrigin) = .empty,
+    /// 激进尺寸（`-OReleaseSmall`）开关。
+    aggressive_size: bool = false,
+    fused_cmp: std.AutoHashMapUnmanaged(Air.Inst.Index, FusedCmp) = .empty,
+    fused_br: std.AutoHashMapUnmanaged(Air.Inst.Index, FusedBr) = .empty,
 
     fn fail(gen: *Gen, comptime fmt: []const u8, args: anytype) codegen.CodeGenError {
         @branchHint(.cold);
@@ -1299,8 +1321,27 @@ const Gen = struct {
     // --- 第二遍：发射代码 ---------------------------------------------------
 
     fn emitBody(gen: *Gen, body: []const Air.Inst.Index) codegen.CodeGenError!void {
+        try gen.planFusion(body);
         for (body) |inst| {
             const tag = gen.air.instructions.items(.tag)[@intFromEnum(inst)];
+            // 激进尺寸：条件融合（比较直接出分支）。
+            if (gen.fused_br.get(inst)) |bl| {
+                const cb = gen.air.unwrapCondBr(inst);
+                try gen.mir.addLabel(gen.gpa, bl.else_label);
+                try gen.emitBody(cb.else_body);
+                try gen.jmpFar(bl.end_label);
+                try gen.mir.addLabel(gen.gpa, bl.then_label);
+                try gen.emitBody(cb.then_body);
+                try gen.mir.addLabel(gen.gpa, bl.end_label);
+                continue;
+            }
+            if (gen.fused_cmp.get(inst)) |fc| {
+                try gen.emitCmpToA(inst, tag);
+                try gen.addInst(if (fc.jump_if_true) .jnz else .jz, &.{
+                    .{ .code = .{ .local_label = fc.target } },
+                });
+                continue;
+            }
             switch (tag) {
                 .block, .loop => try gen.emitBlock(inst),
                 .dbg_inline_block => try gen.emitInlineBlock(inst),
@@ -1426,6 +1467,53 @@ const Gen = struct {
         const blk = gen.air.unwrapDbgBlock(inst);
         try gen.emitBody(blk.body);
         try gen.mir.addLabel(gen.gpa, info.end);
+    }
+
+    /// 激进尺寸：规划「比较紧跟 `cond_br`」的融合，让比较直接出分支而不物化 bool。
+    /// 仅在 `-OReleaseSmall` 生效；要求比较是 `body` 里紧接着 `cond_br` 的前一条指令，
+    /// 且只被这一个 `cond_br` 用作条件（否则跳过物化会让其它用途读到旧值）。
+    fn planFusion(gen: *Gen, body: []const Air.Inst.Index) codegen.CodeGenError!void {
+        if (!gen.aggressive_size) return;
+        const tags = gen.air.instructions.items(.tag);
+        var i: usize = 0;
+        while (i < body.len) : (i += 1) {
+            const inst = body[i];
+            if (tags[@intFromEnum(inst)] != .cond_br) continue;
+            const cb = gen.air.unwrapCondBr(inst);
+            const cidx = cb.condition.toIndex() orelse continue;
+            if (!isFusableCmpTag(tags[@intFromEnum(cidx)])) continue;
+            // cidx 必须紧邻在 cond_br 之前（跳过 dbg）。
+            var j = i;
+            var adjacent = false;
+            while (j > 0) {
+                j -= 1;
+                if (isDbgTag(tags[@intFromEnum(body[j])])) continue;
+                adjacent = body[j] == cidx;
+                break;
+            }
+            if (!adjacent) continue;
+            if (gen.countCondBrUses(body, cidx) != 1) continue;
+            const then_label = gen.newLabel();
+            const else_label = gen.newLabel();
+            const end_label = gen.newLabel();
+            try gen.fused_cmp.put(gen.gpa, cidx, .{ .target = then_label, .jump_if_true = true });
+            try gen.fused_br.put(gen.gpa, inst, .{
+                .then_label = then_label,
+                .else_label = else_label,
+                .end_label = end_label,
+            });
+        }
+    }
+
+    fn countCondBrUses(gen: *Gen, body: []const Air.Inst.Index, cidx: Air.Inst.Index) u32 {
+        const tags = gen.air.instructions.items(.tag);
+        var n: u32 = 0;
+        for (body) |inst| {
+            if (tags[@intFromEnum(inst)] != .cond_br) continue;
+            const cb = gen.air.unwrapCondBr(inst);
+            if (cb.condition.toIndex() == cidx) n += 1;
+        }
+        return n;
     }
 
     fn emitCondBr(gen: *Gen, inst: Air.Inst.Index) codegen.CodeGenError!void {
@@ -3751,7 +3839,15 @@ const Gen = struct {
 
     // --- 比较 ---------------------------------------------------------------
 
+    /// 比较并落值到结果帧槽（默认路径）。
     fn emitCmp(gen: *Gen, inst: Air.Inst.Index, tag: Air.Inst.Tag) codegen.CodeGenError!void {
+        const dst = gen.vals[@intFromEnum(inst)];
+        try gen.emitCmpToA(inst, tag);
+        try gen.storeA(dst, 0, 1);
+    }
+
+    /// 比较，结果（0/1）留在 A。供普通落值（`emitCmp`）与条件融合分支共用。
+    fn emitCmpToA(gen: *Gen, inst: Air.Inst.Index, tag: Air.Inst.Tag) codegen.CodeGenError!void {
         const bin = gen.air.instructions.items(.data)[@intFromEnum(inst)].bin_op;
         const lhs_ty = gen.air.typeOf(bin.lhs, &gen.zcu.intern_pool);
         const class = abi.classify(lhs_ty, gen.zcu);
@@ -3762,7 +3858,6 @@ const Gen = struct {
         const size: u32 = class.size;
         const lhs = try gen.locOf(bin.lhs);
         const rhs = try gen.locOf(bin.rhs);
-        const dst = gen.vals[@intFromEnum(inst)];
 
         switch (tag) {
             .cmp_eq, .cmp_neq => {
@@ -3788,7 +3883,6 @@ const Gen = struct {
                 try gen.mir.addLabel(gen.gpa, zero_label);
                 try gen.setABool(tag == .cmp_eq);
                 try gen.mir.addLabel(gen.gpa, done_label);
-                try gen.storeA(dst, 0, 1);
             },
             .cmp_lt, .cmp_lte, .cmp_gt, .cmp_gte => {
                 // 计算 a - b，借位 CY 表示 a < b；有符号先把两边最高字节符号位取反。
@@ -3841,7 +3935,6 @@ const Gen = struct {
                     .{ .reg = .a },
                     .{ .imm = .{ .value = 1, .bits = 8 } },
                 });
-                try gen.storeA(dst, 0, 1);
             },
             else => unreachable,
         }
@@ -4269,6 +4362,7 @@ pub fn generate(
         .arch = zcu.getTarget().cpu.arch,
         .ret_class = abi.classify(ret_ty, zcu),
         .vals = vals,
+        .aggressive_size = zcu.optimizeMode() == .ReleaseSmall,
     };
     errdefer {
         gen.mir.deinit(gpa);
@@ -4277,6 +4371,8 @@ pub fn generate(
         gen.switch_info.deinit(gpa);
         gen.extra_slots.deinit(gpa);
         gen.m51_incoming.deinit(gpa);
+        gen.fused_cmp.deinit(gpa);
+        gen.fused_br.deinit(gpa);
     }
 
     try gen.genBody(air.getMainBody());
@@ -4288,6 +4384,8 @@ pub fn generate(
     gen.switch_info.deinit(gpa);
     gen.extra_slots.deinit(gpa);
     gen.m51_incoming.deinit(gpa);
+    gen.fused_cmp.deinit(gpa);
+    gen.fused_br.deinit(gpa);
     return result;
 }
 
