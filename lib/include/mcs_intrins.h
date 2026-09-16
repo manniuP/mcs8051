@@ -9,7 +9,12 @@
 #define MCS_INTRINS_H
 
 /* _nop_() 必须是“表达式”而非语句：STC 头里的 NOP2() NOP1(),NOP1() 依赖逗号表达式 */
+#ifdef __SDCC_STUB__
+/* clangd shim：clang 不认 SDCC 内联汇编，给个空实现（仅编辑器可见） */
+static void mcs_nop_impl(void) {}
+#else
 static void mcs_nop_impl(void) { __asm NOP __endasm; }
+#endif
 #define _nop_()  mcs_nop_impl()
 
 /* 测试并清零：返回原值，随后将该位清零（Keil 语义近似） */

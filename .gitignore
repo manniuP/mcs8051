@@ -119,3 +119,9 @@ __pycache__/
 *.user
 Thumbs.db
 desktop.ini
+
+# 例外：VSCode 示例工程保留 .vscode 配置
+!/examples/vscode_c_cmake/.vscode/
+!/examples/vscode_c_cmake/.vscode/**
+!/examples/vscode_mixed_xmake_zig/.vscode/
+!/examples/vscode_mixed_xmake_zig/.vscode/**
