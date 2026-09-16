@@ -1,8 +1,8 @@
 @echo off
-rem USB-CDC portable build driver. Uses only the shared ..\toolchain\.
-rem No system toolchain and no pre-set environment variables are required.
+rem ziglog portable build driver (pure Zig). Uses only the shared ..\toolchain\.
+rem No system toolchain, no Python and no pre-set environment variables are required.
 rem
-rem Usage:  build.cmd [-Dcode-loc=0x0000] [extra zig args]
+rem Usage:  build.cmd [-Dmcs-small=true] [-Dcode-loc=0x0000] [extra zig args]
 setlocal
 
 set "HERE=%~dp0"
@@ -24,5 +24,5 @@ pushd "%HERE%"
 "%ZIG%" build %*
 set RC=%ERRORLEVEL%
 popd
-if "%RC%"=="0" ( echo [OK] usb_cdc.ihx ) else ( echo [FAIL] rc=%RC% )
+if "%RC%"=="0" ( echo [OK] log.ihx ) else ( echo [FAIL] rc=%RC% )
 exit /b %RC%

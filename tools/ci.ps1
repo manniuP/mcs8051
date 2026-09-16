@@ -31,7 +31,7 @@ function Step([string]$name, [scriptblock]$body) {
 
 # ---- 1) mcs251 targets ----
 Step "xmake configure (mcs251)" { xmake f --mcs_arch=mcs251 }
-$targets = @("ziglog","zigled","zigasm","zigirq","zigirqall","zigmem","zighotcold","zigrtindex","zigslice","zigrtslice","zigns","zigbuzz","ptrtest","uart","ccobs")
+$targets = @("ziglog","zigled","zigasm","zigirq","zigirqall","zigprint","ziguart","zigmem","zighotcold","zigrtindex","zigslice","zigrtslice","zigns","zigbuzz","ptrtest","uart","ccobs")
 if (-not $SkipUsb) { $targets += @("usbcdc","usbhid","usbcdcobs") }
 foreach ($t in $targets) { Step ("build " + $t) { xmake build $t } }
 
@@ -55,7 +55,8 @@ if (-not $SkipSim) {
     # WSL 镜像路径：C:\... -> /mnt/c/...
     $cmdWsl = "/mnt/" + $cmd.Substring(0, 1).ToLower() + ($cmd.Substring(2) -replace '\\', '/')
     $rootWsl = "/mnt/" + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/')
-    $ucsim = "/home/hui/ucsim-stc/ucsim/src/sims/s51.src/ucsim_51"   # or ~/ucsim251/.../ucsim_51
+    # STC15 ucsim（本机自建；可用环境变量 UCSIM51 覆盖）。
+    $ucsim = if ($env:UCSIM51) { $env:UCSIM51 } else { "~/ucsim-stc/ucsim/src/sims/s51.src/ucsim_51" }
     if (Test-Path -LiteralPath $cmd) {
         Step "sim: ucsim simtest (expect 0x8000 = aa 00 02 04 08 10 20 40)" {
             $wslCmd = "cd $rootWsl && $ucsim -t STC15 -S in=/dev/null,out=- " +

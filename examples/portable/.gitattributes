@@ -1,0 +1,15 @@
+# Sources: LF
+*.c    text eol=lf
+*.h    text eol=lf
+*.zig  text eol=lf
+*.md   text eol=lf
+*.toml text eol=lf
+# Windows scripts: CRLF
+*.cmd  text eol=crlf
+# Bundled toolchain / binaries: keep bytes as-is
+toolchain/** -text -eol -diff
+*.exe  -text
+*.dll  -text
+*.lib  -text
+*.a    -text
+*.o    -text
