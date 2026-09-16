@@ -51,17 +51,20 @@ Step "host: cobs c test" {
 
 # ---- 4) 8-bit simulation (WSL ucsim runs simtest) ----
 if (-not $SkipSim) {
-    $cmd = "<user>\AppData\Local\Temp\opencode\simtest.cmd"
+    $cmd = Join-Path $env:TEMP "opencode\simtest.cmd"
+    # WSL 镜像路径：C:\... -> /mnt/c/...
+    $cmdWsl = "/mnt/" + $cmd.Substring(0, 1).ToLower() + ($cmd.Substring(2) -replace '\\', '/')
+    $rootWsl = "/mnt/" + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/')
     $ucsim = "/home/hui/ucsim-stc/ucsim/src/sims/s51.src/ucsim_51"   # or ~/ucsim251/.../ucsim_51
     if (Test-Path -LiteralPath $cmd) {
         Step "sim: ucsim simtest (expect 0x8000 = aa 00 02 04 08 10 20 40)" {
-            $wslCmd = "cd <workspace>/mcs251 && $ucsim -t STC15 -S in=/dev/null,out=- " +
-                      "examples/at89c52_sim/simtest.ihx < <user>/AppData/Local/Temp/opencode/simtest.cmd " +
+            $wslCmd = "cd $rootWsl && $ucsim -t STC15 -S in=/dev/null,out=- " +
+                      "examples/at89c52_sim/simtest.ihx < $cmdWsl " +
                       "| grep -q 'aa 00 02 04 08 10 20 40'"
             wsl -e bash -lc $wslCmd
         }
         Step "sim: ccobs51 8-bit cobs (expect 03 7e 02 04 34 12 24 00)" {
-            $wslCmd = "cd <workspace>/mcs251/examples/mcs51_c_cobs && $ucsim -t STC15 " +
+            $wslCmd = "cd $rootWsl/examples/mcs51_c_cobs && $ucsim -t STC15 " +
                       "-S in=/dev/null,out=- ccobs51.ihx < sim.cmd | grep -q '03 7e 02 04 34 12 24'"
             wsl -e bash -lc $wslCmd
         }
