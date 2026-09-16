@@ -65,6 +65,10 @@ const DynPtr = struct { base: i32, idx: i32, idx_size: u32, elem_size: u32, len:
 /// 物化切片的来源（编译期已知的数组视图），按切片存储位移索引。
 const SliceOrigin = struct { base: i32, off: i32, len: u32 };
 
+/// 数据空间：`.ptr_rt` 解引用时据此选寻址（xdata=`@dr28`、edata=`movx @dptr`、
+/// data/idata=`@r0`）。
+const SymbolSpace = enum { xdata, data, idata, edata };
+
 /// 一个 AIR 运行期值的位置。
 const MCValue = union(enum) {
     /// 尚未求值 / 无运行时值。
@@ -86,7 +90,10 @@ const MCValue = union(enum) {
     /// `base_addr`/`off` 用于元素指针：base_addr 是源指针 addr，off 是编译期元素偏移，
     /// 在 emitElemPtr 物化时把 DR28 设为 (load(base_addr) + off) 存到 addr。
     /// `run_idx >= 0` 时表示「编译期基址（全局符号 `sym` 或固定地址 `imm_base`）+ 运行期
-    /// 下标 `run_idx` * `elem_size`」的 xdata 元素指针，在 emitElemPtr 中算成绝对地址。
+    /// 下标 `run_idx` * `elem_size`」的元素指针，在 emitElemPtr 中算成绝对地址。
+    /// `space` 记录该地址所属的数据空间，解引用时据此选寻址（xdata=`@dr28`、
+    /// edata=`movx @dptr`、data/idata=`@r0`）；仅编译期基址+运行期下标能确定空间，
+    /// 其余路径默认 xdata。
     ptr_rt: struct {
         addr: i32,
         base_addr: i32 = 0,
@@ -97,6 +104,7 @@ const MCValue = union(enum) {
         sym: []const u8 = &.{},
         use_imm: bool = false,
         imm_base: u32 = 0,
+        space: SymbolSpace = .xdata,
     },
     /// 编译期切片视图（`base`+`off` 为数据地址，`len` 为元素个数）。
     slice: struct { base: i32, off: i32, len: u32 },
@@ -676,8 +684,9 @@ const Gen = struct {
     }
 
     /// 编译期基址（全局符号或 `@ptrFromInt` 固定地址）+ **运行期下标**的元素指针。
-    /// 只能走 xdata（24 位）间接寻址：在 `emitElemPtr` 中算 `base + idx*elem_size` 存成
-    /// 3 字节绝对地址；下标须为 8 位、元素大小须为 2 的幂（COBS 缓冲即 u8）。
+    /// 计算 `base + idx*elem_size` 存成 `ptrBytes()` 字节绝对地址；空间由全局符号的
+    /// `linksection`（或固定地址范围）决定，解引用时选对应寻址。下标须为 8 位、
+    /// 元素大小须为 2 的幂（COBS 缓冲即 u8）。
     fn preallocAbsElemPtr(
         gen: *Gen,
         inst: Air.Inst.Index,
@@ -710,16 +719,13 @@ const Gen = struct {
                 "mcs backend: runtime index on an offset global array is not implemented yet",
                 .{},
             );
-            if (g.space != .xdata) return gen.fail(
-                "mcs backend: runtime index on a non-xdata global is not implemented yet",
-                .{},
-            );
             gen.vals[@intFromEnum(inst)] = .{ .ptr_rt = .{
                 .addr = addr,
                 .run_idx = idx_frame,
                 .idx_size = idx_size,
                 .elem_size = elem_size,
                 .sym = g.name,
+                .space = g.space,
             } };
             return;
         }
@@ -731,6 +737,7 @@ const Gen = struct {
                 .elem_size = elem_size,
                 .use_imm = true,
                 .imm_base = a,
+                .space = spaceOfAddr(a),
             } };
             return;
         }
@@ -1491,17 +1498,20 @@ const Gen = struct {
         };
     }
 
-    /// 若 `ref` 是一个运行期绝对地址（值生成型指针），返回存放 3 字节地址的帧槽。
+    /// 运行期绝对地址：存放 `ptrBytes()` 字节地址的帧槽 + 所属数据空间。
+    const RtAddr = struct { disp: i32, space: SymbolSpace = .xdata };
+
+    /// 若 `ref` 是一个运行期绝对地址（值生成型指针），返回存放 3 字节地址的帧槽与空间。
     /// `.alloc`/`.ptr_elem_ptr` 等存储型引用的 `.frame` 不算地址。
-    fn runtimeAddrOf(gen: *Gen, ref: Air.Inst.Ref) ?i32 {
+    fn runtimeAddrOf(gen: *Gen, ref: Air.Inst.Ref) ?RtAddr {
         const idx = ref.toIndex() orelse return null;
         switch (gen.vals[@intFromEnum(idx)]) {
-            .ptr_rt => |pr| return pr.addr,
+            .ptr_rt => |pr| return .{ .disp = pr.addr, .space = pr.space },
             .frame => |d| {
                 const tag = gen.air.instructions.items(.tag)[@intFromEnum(idx)];
                 return switch (tag) {
                     .alloc, .ptr_elem_ptr, .ptr_slice_len_ptr, .ptr_slice_ptr_ptr => null,
-                    else => d,
+                    else => .{ .disp = d },
                 };
             },
             else => return null,
@@ -1657,7 +1667,7 @@ const Gen = struct {
             const size: u32 = @intCast(elem_ty.abiSize(gen.zcu));
             const dst_disp = gen.vals[@intFromEnum(inst)].ptr.base;
             if (gen.runtimeAddrOf(ty_op.operand)) |addr| {
-                try gen.derefRead(addr, size, dst_disp);
+                try gen.derefRead(addr.space, addr.disp, size, dst_disp);
                 return;
             }
             const src_disp = try gen.storageDisp(ty_op.operand);
@@ -1671,7 +1681,7 @@ const Gen = struct {
         }
         const size = try gen.scalarSize(elem_ty);
         if (gen.runtimeAddrOf(ty_op.operand)) |addr| {
-            try gen.derefRead(addr, size, gen.vals[@intFromEnum(inst)].frame);
+            try gen.derefRead(addr.space, addr.disp, size, gen.vals[@intFromEnum(inst)].frame);
             return;
         }
         if (gen.dynPtrOf(ty_op.operand)) |pd| {
@@ -1731,7 +1741,7 @@ const Gen = struct {
             }
             if (gen.runtimeAddrOf(bin.lhs)) |addr| {
                 const src_disp = try gen.aggSrcDisp(bin.rhs);
-                try gen.derefWrite(addr, .{ .frame = src_disp }, size, false);
+                try gen.derefWrite(addr.space, addr.disp, .{ .frame = src_disp }, size, false);
                 return;
             }
             const dst_disp = try gen.storageDisp(bin.lhs);
@@ -1752,7 +1762,7 @@ const Gen = struct {
         const size: u32 = class.size;
         const src = try gen.locOf(bin.rhs);
         if (gen.runtimeAddrOf(bin.lhs)) |addr| {
-            try gen.derefWrite(addr, src, size, true);
+            try gen.derefWrite(addr.space, addr.disp, src, size, true);
             return;
         }
         if (gen.dynPtrOf(bin.lhs)) |pd| {
@@ -2601,21 +2611,56 @@ const Gen = struct {
         try gen.addInst(.mov, &.{ .{ .reg = .dph }, .{ .reg = .a } });
     }
 
+    /// `@r0`（8 位 idata 间接）读：`addr_disp` 低位字节装入 R0 后逐字节读。
+    fn derefReadRi(gen: *Gen, addr_disp: i32, size: u32, dst_disp: i32) codegen.CodeGenError!void {
+        try gen.loadByteToA(.{ .frame = addr_disp }, 0, gen.ptrBytes());
+        try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, .{ .reg = .a } });
+        var j: u32 = 0;
+        while (j < size) : (j += 1) {
+            try gen.addInst(.mov, &.{ .{ .reg = .a }, .{ .at_ri = 0 } });
+            try gen.addInst(.mov, &.{
+                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                .{ .reg = .a },
+            });
+            if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .{ .r = 0 } }});
+        }
+    }
+
+    /// `movx @dptr`（16 位 edata/xdata）读：`addr_disp` 低 2 字节装入 DPTR 后逐字节读。
+    fn derefReadDptr(gen: *Gen, addr_disp: i32, size: u32, dst_disp: i32) codegen.CodeGenError!void {
+        const ps = gen.ptrBytes();
+        try gen.loadByteToA(.{ .frame = addr_disp }, 0, ps);
+        try gen.addInst(.mov, &.{ .{ .reg = .dpl }, .{ .reg = .a } });
+        try gen.loadByteToA(.{ .frame = addr_disp }, 1, ps);
+        try gen.addInst(.mov, &.{ .{ .reg = .dph }, .{ .reg = .a } });
+        var j: u32 = 0;
+        while (j < size) : (j += 1) {
+            try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
+            try gen.addInst(.mov, &.{
+                gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                .{ .reg = .a },
+            });
+            if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+        }
+    }
+
     /// 从帧槽 `addr_disp` 保存的绝对地址读取 `size` 字节到 `dst_disp`（内存序）。
-    fn derefRead(gen: *Gen, addr_disp: i32, size: u32, dst_disp: i32) codegen.CodeGenError!void {
+    /// 按 `space` 选寻址：data/idata=`@r0`，edata=`movx @dptr`，xdata=`@dr28`。
+    fn derefRead(
+        gen: *Gen,
+        space: SymbolSpace,
+        addr_disp: i32,
+        size: u32,
+        dst_disp: i32,
+    ) codegen.CodeGenError!void {
+        switch (space) {
+            .data, .idata => return gen.derefReadRi(addr_disp, size, dst_disp),
+            .edata => return gen.derefReadDptr(addr_disp, size, dst_disp),
+            .xdata => {},
+        }
         if (gen.arch == .mcs51) {
             // MCS-51：16 位 xdata 指针 -> DPTR，MOVX 读，逐字节 INC DPTR。
-            try gen.loadPtrToDptr(.{ .frame = addr_disp }, gen.ptrBytes());
-            var j: u32 = 0;
-            while (j < size) : (j += 1) {
-                try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
-                try gen.addInst(.mov, &.{
-                    gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
-                    .{ .reg = .a },
-                });
-                if (j + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
-            }
-            return;
+            return gen.derefReadDptr(addr_disp, size, dst_disp);
         }
         try gen.loadPtrToDr28(.{ .frame = addr_disp }, 3);
         var j: u32 = 0;
@@ -2632,20 +2677,52 @@ const Gen = struct {
         }
     }
 
+    /// `@r0` 写：`addr_disp` 低位字节装入 R0 后逐字节写。
+    fn derefWriteRi(gen: *Gen, addr_disp: i32, src: Loc, size: u32, scalar: bool) codegen.CodeGenError!void {
+        try gen.loadByteToA(.{ .frame = addr_disp }, 0, gen.ptrBytes());
+        try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, .{ .reg = .a } });
+        var m: u32 = 0;
+        while (m < size) : (m += 1) {
+            try gen.loadByteToA(src, if (scalar) size - 1 - m else m, size);
+            try gen.addInst(.mov, &.{ .{ .at_ri = 0 }, .{ .reg = .a } });
+            if (m + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .{ .r = 0 } }});
+        }
+    }
+
+    /// `movx @dptr` 写：`addr_disp` 低 2 字节装入 DPTR 后逐字节写。
+    fn derefWriteDptr(gen: *Gen, addr_disp: i32, src: Loc, size: u32, scalar: bool) codegen.CodeGenError!void {
+        const ps = gen.ptrBytes();
+        try gen.loadByteToA(.{ .frame = addr_disp }, 0, ps);
+        try gen.addInst(.mov, &.{ .{ .reg = .dpl }, .{ .reg = .a } });
+        try gen.loadByteToA(.{ .frame = addr_disp }, 1, ps);
+        try gen.addInst(.mov, &.{ .{ .reg = .dph }, .{ .reg = .a } });
+        var m: u32 = 0;
+        while (m < size) : (m += 1) {
+            try gen.loadByteToA(src, if (scalar) size - 1 - m else m, size);
+            try gen.addInst(.movx, &.{ .{ .at_dptr = {} }, .{ .reg = .a } });
+            if (m + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
+        }
+    }
+
     /// 把 `src` 的 `size` 字节写到帧槽 `addr_disp` 保存的绝对地址（内存序）。
     /// `scalar=true`：标量按大端落盘（逻辑字节 `i` → 内存偏移 `size-1-i`，与 SDCC/C 一致）；
-    /// `scalar=false`：聚合按内存顺序逐字节搬运。
-    fn derefWrite(gen: *Gen, addr_disp: i32, src: Loc, size: u32, scalar: bool) codegen.CodeGenError!void {
+    /// `scalar=false`：聚合按内存顺序逐字节搬运。按 `space` 选寻址（同 derefRead）。
+    fn derefWrite(
+        gen: *Gen,
+        space: SymbolSpace,
+        addr_disp: i32,
+        src: Loc,
+        size: u32,
+        scalar: bool,
+    ) codegen.CodeGenError!void {
+        switch (space) {
+            .data, .idata => return gen.derefWriteRi(addr_disp, src, size, scalar),
+            .edata => return gen.derefWriteDptr(addr_disp, src, size, scalar),
+            .xdata => {},
+        }
         if (gen.arch == .mcs51) {
             // MCS-51：DPTR + MOVX 写，逐字节 INC DPTR。
-            try gen.loadPtrToDptr(.{ .frame = addr_disp }, gen.ptrBytes());
-            var m: u32 = 0;
-            while (m < size) : (m += 1) {
-                try gen.loadByteToA(src, if (scalar) size - 1 - m else m, size);
-                try gen.addInst(.movx, &.{ .{ .at_dptr = {} }, .{ .reg = .a } });
-                if (m + 1 < size) try gen.addInst(.inc, &.{.{ .reg = .dptr }});
-            }
-            return;
+            return gen.derefWriteDptr(addr_disp, src, size, scalar);
         }
         try gen.loadPtrToDr28(.{ .frame = addr_disp }, 3);
         var m: u32 = 0;
@@ -2660,8 +2737,13 @@ const Gen = struct {
         }
     }
 
-    /// 全局符号所在的数据空间（由 `linksection` 选择）。
-    const SymbolSpace = enum { xdata, data, idata };
+    /// 固定整数地址（`@ptrFromInt`）所属的数据空间，按地址范围划分：
+    /// `<0x100` direct/idata、`<0x10000` edata、`≥0x10000` 24 位 xdata。
+    fn spaceOfAddr(addr: u32) SymbolSpace {
+        if (addr < 0x100) return .data;
+        if (addr < 0x10000) return .edata;
+        return .xdata;
+    }
 
     /// 一个全局/外部数据符号：ASxxxx 名（`_` 前缀）+ 空间 + 编译期字节偏移（数组元素）。
     const GlobalRef = struct {
@@ -2908,6 +2990,17 @@ const Gen = struct {
                     });
                 }
             },
+            .edata => {
+                var j: u32 = 0;
+                while (j < size) : (j += 1) {
+                    try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, g.off + j) });
+                    try gen.addInst(.movx, &.{ .{ .reg = .a }, .{ .at_dptr = {} } });
+                    try gen.addInst(.mov, &.{
+                        gen.frameOperand(dst_disp + @as(i32, @intCast(j))),
+                        .{ .reg = .a },
+                    });
+                }
+            },
         }
     }
 
@@ -2941,6 +3034,14 @@ const Gen = struct {
                     try gen.loadByteToA(src, size - 1 - m, size);
                     try gen.addInst(.mov, &.{ .{ .reg = .{ .r = 0 } }, immAddrOperand(g.name, g.off + m) });
                     try gen.addInst(.mov, &.{ .{ .at_ri = 0 }, .{ .reg = .a } });
+                }
+            },
+            .edata => {
+                var m: u32 = 0;
+                while (m < size) : (m += 1) {
+                    try gen.loadByteToA(src, size - 1 - m, size);
+                    try gen.addInst(.mov, &.{ .{ .reg = .dptr }, immAddrOperand(g.name, g.off + m) });
+                    try gen.addInst(.movx, &.{ .{ .at_dptr = {} }, .{ .reg = .a } });
                 }
             },
         }
