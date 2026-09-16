@@ -3646,8 +3646,16 @@ const Gen = struct {
                     var i: u32 = size;
                     while (i > 0) {
                         i -= 1; // 大端：先压最高字节
-                        try gen.loadByteToA(loc, i, size);
-                        try gen.addInst(.push, &.{.{ .dir8 = .{ .symbol = "acc" } }});
+                        switch (loc) {
+                            .imm => |v| {
+                                const byte: u8 = @truncate(v >> @intCast(8 * i));
+                                try gen.addInst(.push, &.{.{ .imm = .{ .value = byte, .bits = 8 } }});
+                            },
+                            else => {
+                                try gen.loadByteToA(loc, i, size);
+                                try gen.addInst(.push, &.{.{ .dir8 = .{ .symbol = "acc" } }});
+                            },
+                        }
                         gen.pushed += 1;
                         total_pushed += 1;
                     }
@@ -3670,9 +3678,18 @@ const Gen = struct {
             const dst_regs = abi.byteRegisters(abi.classifySize(size));
             var i: u32 = 0;
             while (i < size) : (i += 1) {
-                try gen.loadByteToA(loc, i, size);
                 const dr = byteRegToRegister(dst_regs[i]);
-                if (!isRegisterA(dr)) try gen.addInst(.mov, &.{ .{ .reg = dr }, .{ .reg = .a } });
+                switch (loc) {
+                    // 常量参数直接写目标寄存器，省去「载入 A 再转存」。
+                    .imm => |v| {
+                        const byte: u8 = @truncate(v >> @intCast(8 * i));
+                        try gen.addInst(.mov, &.{ .{ .reg = dr }, .{ .imm = .{ .value = byte, .bits = 8 } } });
+                    },
+                    else => {
+                        try gen.loadByteToA(loc, i, size);
+                        if (!isRegisterA(dr)) try gen.addInst(.mov, &.{ .{ .reg = dr }, .{ .reg = .a } });
+                    },
+                }
             }
         }
 
