@@ -5,6 +5,10 @@
     "--completion-style=detailed"
   ],
   "C_Cpp.intelliSenseEngine": "disabled",
-  "files.associations": { "*.h": "c", "*.c": "c", "*.zig": "zig" },
-  "zig.buildOnSave": false
+  "files.associations": {
+    "*.h": "c",
+    "*.c": "c",
+    "*.zig": "zig"
+  },
+  "zig.buildOnSaveProvider": false
 }

@@ -9,7 +9,10 @@
   "C_Cpp.intelliSenseEngine": "disabled",
   "files.associations": { "*.h": "c", "*.c": "c" },
   "cmake.configureArgs": [
-    "-DCMAKE_TOOLCHAIN_FILE=${workspaceFolder}/cmake/sdcc-mcs251.cmake"
+    "-G",
+    "Ninja",
+    "-D",
+    "CMAKE_TOOLCHAIN_FILE=${workspaceFolder}/cmake/sdcc-mcs251.cmake"
   ],
   "cmake.buildDirectory": "${workspaceFolder}/build"
 }

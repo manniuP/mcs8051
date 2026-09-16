@@ -14,15 +14,33 @@ vscode_c_cmake/
 
 ## 构建（CMake + SDCC）
 
-要求：CMake ≥ 3.20；SDCC 用仓库预编译包（工具链文件里默认指向 `../../tools/sdcc-mcs251-windows-x64/...`，
-可用 `-DMCS_SDCC=<路径>` 覆盖）。
+要求：CMake ≥ 3.20；SDCC 用仓库预编译包（工具链文件默认指向仓库内的
+`tools/sdcc-mcs251-windows-x64/sdcc-mcs251/bin/sdcc.exe`，也可通过 `-DMCS_SDCC=<路径>` 覆盖）。
+
+注意：本工程不能直接让 CMake 继续用默认的 Visual Studio / MSVC 生成器；必须明确指定
+`Ninja`，并在重试前清理旧的 `build/` 缓存。
+
+在**仓库根目录**执行：
 
 ```powershell
-cd examples\vscode_c_cmake
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/sdcc-mcs251.cmake
+cd examples/vscode_c_cmake
+Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+cmake -S . -B build -G Ninja -D CMAKE_TOOLCHAIN_FILE=cmake/sdcc-mcs251.cmake
 cmake --build build
-# 产物 build/blink.ihx
+# 产物: build/blink.ihx
 ```
+
+或从仓库根目录一次写成：
+
+```powershell
+Remove-Item -Recurse -Force .\examples\vscode_c_cmake\build -ErrorAction SilentlyContinue
+cmake -S .\examples\vscode_c_cmake -B .\examples\vscode_c_cmake\build -G Ninja `
+      -D CMAKE_TOOLCHAIN_FILE=cmake/sdcc-mcs251.cmake
+cmake --build .\examples\vscode_c_cmake\build
+```
+（`CMAKE_TOOLCHAIN_FILE` 相对 `-S` 的源目录解析。）
+
+> 关键点：`-G Ninja` 和 `-D CMAKE_TOOLCHAIN_FILE=...` 是必须的；若保留旧的 VS 缓存，CMake 会继续回退到 `cl.exe`，从而把 SDCC 选项都当成 MSVC 参数吞掉。
 
 VS Code：打开本目录 → `Ctrl+Shift+B` 跑默认任务 `cmake: build`。
 

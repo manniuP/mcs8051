@@ -8,7 +8,9 @@
       "args": [
         "-S", ".",
         "-B", "build",
-        "-DCMAKE_TOOLCHAIN_FILE=cmake/sdcc-mcs251.cmake"
+        "-G", "Ninja",
+        "-D",
+        "CMAKE_TOOLCHAIN_FILE=${workspaceFolder}/cmake/sdcc-mcs251.cmake"
       ],
       "problemMatcher": []
     },
