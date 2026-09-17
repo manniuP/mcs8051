@@ -67,3 +67,5 @@ xmake build ziglog          # 纯 Zig；C 目标如 uart/led 走 SDCC
 - `compiler/`（上游 Zig fork）：**MIT**
 - `sdcc/`（上游 SDCC fork）：**GPL-2.0**
 - 本仓内容（`examples/`、`lib/`、`devices/`、`tools/`、`docs/`、`xmake/`）：**Apache-2.0**（见 [`LICENSE`](LICENSE)）
+- ⚠️ 含少量 **STC 官方版权 / 衍生**内容（`lib/stc-hal/`、`examples/ai8051u_usb_{cdc,hid}/src/`、
+  `lib/include/ai8051u_sfr.h`），**不适用 Apache-2.0**；版权与条款见 [`THIRD-PARTY.md`](THIRD-PARTY.md)。
