@@ -8,8 +8,8 @@
 
 | 子模块 | 仓库 | 作用 |
 | --- | --- | --- |
-| `compiler/` | [huip20440/zig-mcs51-backend](https://github.com/huip20440/zig-mcs51-backend) | Zig 自举后端：Zig 源 → MCS-51/251 汇编（ASxxxx） |
-| `sdcc/` | [huip20440/sdcc-c251](https://github.com/huip20440/sdcc-c251) | SDCC（MCS-251 目标）：编译 C、`sdas`/`sdld` 汇编链接 |
+| `compiler/` | [manniuP/zig-mcs51-backend](https://github.com/manniuP/zig-mcs51-backend) | Zig 自举后端：Zig 源 → MCS-51/251 汇编（ASxxxx） |
+| `sdcc/` | [manniuP/sdcc-c251](https://github.com/manniuP/sdcc-c251) | SDCC（MCS-251 目标）：编译 C、`sdas`/`sdld` 汇编链接 |
 
 ## 获取
 
