@@ -1,0 +1,18 @@
+# 依赖（子模块）固定版本
+# gitlink 已指向这些提交；本文件供人读与脚本校验（git submodule status 应一致）。
+schema = 1
+
+[compiler]
+name = "zig-mcs51-backend"
+url = "https://github.com/huip20440/zig-mcs51-backend"
+branch = "mcs251-backend"
+commit = "4d33ecde0d5a4ae69c370ce4e5fb91af50ed4409"
+upstream = "https://github.com/ziglang/zig"
+upstream_commit = "7056ba9a5c750305726be862a51ff18e2318c138"
+
+[sdcc]
+name = "sdcc-c251"
+url = "https://github.com/huip20440/sdcc-c251"
+branch = "main"
+commit = "912a589d4080c9cd5c5c1faf871c62dd5023580d"
+upstream = "https://git.code.sf.net/p/sdcc/git-mirror"

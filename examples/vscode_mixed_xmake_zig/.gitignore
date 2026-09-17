@@ -1,0 +1,13 @@
+# 构建输出
+.xmake/
+.zig-cache/
+zig-out/
+*.asm
+*.rel
+*.ihx
+*.lst
+*.sym
+*.rst
+*.map
+*.lk
+*.mem

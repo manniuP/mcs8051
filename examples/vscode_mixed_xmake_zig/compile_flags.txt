@@ -1,0 +1,10 @@
+-x
+c
+-std=c11
+-ffreestanding
+-include
+../../tools/clangd/sdcc_stubs.h
+-I
+../../lib/include
+-I
+src

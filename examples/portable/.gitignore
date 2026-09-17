@@ -1,0 +1,19 @@
+# 构建产物
+*.ihx
+*.rel
+*.lst
+*.rst
+*.sym
+*.lk
+*.map
+*.mem
+*.o
+*.adb
+*.cdb
+# 生成的 .asm（但 crt0.asm 是源码）
+*.asm
+!*/crt0.asm
+# 工具链缓存
+.zig-cache/
+zig-cache/
+.cache/

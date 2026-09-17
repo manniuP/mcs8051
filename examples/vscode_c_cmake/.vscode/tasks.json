@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cmake: configure",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-S", ".",
+        "-B", "build",
+        "-G", "Ninja",
+        "-D",
+        "CMAKE_TOOLCHAIN_FILE=${workspaceFolder}/cmake/sdcc-mcs251.cmake"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "cmake: build",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "build"],
+      "dependsOn": "cmake: configure",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}

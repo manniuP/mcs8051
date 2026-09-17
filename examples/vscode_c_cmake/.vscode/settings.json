@@ -1,0 +1,18 @@
+{
+  // clangd 负责 C 的智能提示（走根目录 compile_flags.txt + tools/clangd/sdcc_stubs.h）。
+  "clangd.arguments": [
+    "--background-index",
+    "--header-insertion=never",
+    "--completion-style=detailed"
+  ],
+  // 关掉 Microsoft C/C++ 的 IntelliSense，避免与 clangd 抢。
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "files.associations": { "*.h": "c", "*.c": "c" },
+  "cmake.configureArgs": [
+    "-G",
+    "Ninja",
+    "-D",
+    "CMAKE_TOOLCHAIN_FILE=${workspaceFolder}/cmake/sdcc-mcs251.cmake"
+  ],
+  "cmake.buildDirectory": "${workspaceFolder}/build"
+}

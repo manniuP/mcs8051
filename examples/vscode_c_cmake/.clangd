@@ -1,0 +1,16 @@
+CompileFlags:
+  CompilationDatabase: build
+  Remove:
+    - -mmcs251
+    - --model-large
+    - --code-loc
+    - 0xff0000
+    - --data-loc
+    - 0x30
+    - --idata-loc
+    - 0x80
+  Add:
+    - -include
+    - ../../tools/clangd/sdcc_stubs.h
+    - -I
+    - ../../lib/include
