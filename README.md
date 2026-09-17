@@ -48,6 +48,14 @@ xmake build ziglog          # 纯 Zig；C 目标如 uart/led 走 SDCC
 > 管线：Zig 由 `compiler/` 后端编译成 `.asm`，C 由 SDCC 编译成 `.rel`，再用 `sdas` + `sdld` 链成 `.ihx`。
 > 运行 `compiler\zig-out\bin\zig.exe` 前把 `ZIG_LIB_DIR` 指向 `compiler\lib`（含 mcs51/mcs251 目标定义）。
 
+## 便携工具链
+
+零环境变量：自带 zig + sdcc + mcstools，目标机无需 Python、无需配置环境变量。
+
+- CI（`.github/workflows/portable.yml`）在**手动触发或打 tag** 时构建 `mcs8051-portable.zip`，
+  可从 Actions 产物 / Release 附件下载；
+- 本地生成：`tools\make_portable.ps1 -Out <目录>`，解压后运行 `build.cmd all`。
+
 ## 文档入口
 
 - [`docs/README.md`](docs/README.md) —— 文档总目录（阅读顺序 + 全篇索引）

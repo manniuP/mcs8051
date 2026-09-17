@@ -1,0 +1,104 @@
+name: Portable toolchain
+
+# Build the Windows "portable" toolchain set (bundled zig + sdcc + mcstools,
+# zero environment variables) and publish it as an artifact / release asset.
+#
+# The Windows SDCC binaries are taken from the gevico/sdcc-c251 release because
+# this project does not modify the SDCC sources.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: portable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable:
+    name: Build portable package (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out sources (without submodules)
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Fetch the compiler submodule
+        shell: pwsh
+        run: git submodule update --init compiler
+
+      - name: Set up Zig 0.16.0 (host compiler)
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build the MCS backend
+        shell: pwsh
+        working-directory: compiler
+        run: zig build -Doptimize=ReleaseFast -Dno-lib -Dmcs-only --zig-lib-dir lib
+
+      - name: Download prebuilt Windows SDCC
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path sdcc-dl | Out-Null
+          gh release download v4.6.0-mcs251-20260804 `
+            --repo gevico/sdcc-c251 --pattern "*.zip" --dir sdcc-dl
+          New-Item -ItemType Directory -Force -Path tools\sdcc-mcs251-windows-x64 | Out-Null
+          Expand-Archive -Path (Get-ChildItem sdcc-dl\*.zip).FullName `
+            -DestinationPath tools\sdcc-mcs251-windows-x64 -Force
+          Get-ChildItem tools\sdcc-mcs251-windows-x64 | Select-Object -First 5 Name
+
+      - name: Install PyInstaller
+        shell: pwsh
+        run: python -m pip install --upgrade pyinstaller
+
+      - name: Generate the portable package
+        shell: pwsh
+        run: .\tools\make_portable.ps1 -Out "${{ github.workspace }}\portable"
+
+      - name: Smoke-build the portable examples
+        shell: pwsh
+        working-directory: portable
+        run: .\build.cmd all
+
+      - name: List produced images
+        shell: pwsh
+        run: Get-ChildItem -Recurse -Filter *.ihx portable | Select-Object FullName, Length
+
+      - name: Package as zip
+        shell: pwsh
+        run: Compress-Archive -Path portable -DestinationPath mcs8051-portable.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: mcs8051-portable
+          path: mcs8051-portable.zip
+          archive: false
+          retention-days: 30
+
+      - name: Attach to GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $repo = "${{ github.repository }}"
+          gh release view $tag --repo $repo *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag mcs8051-portable.zip --repo $repo --clobber
+          } else {
+            gh release create $tag mcs8051-portable.zip --repo $repo `
+              --title $tag --notes "mcs8051 portable toolchain ($tag)"
+          }

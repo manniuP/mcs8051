@@ -28,11 +28,15 @@ $work = Join-Path ([System.IO.Path]::GetTempPath()) ("mcstools_build_" + [System
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 Push-Location $repo
 try {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"   # PyInstaller writes progress to stderr; don't treat it as terminating
     & $Python -m PyInstaller --onefile --name mcstools `
         --distpath (Join-Path $work "dist") `
         --workpath (Join-Path $work "build") `
         --specpath $work --noconfirm $entry
-    if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with rc=$LASTEXITCODE" }
+    $pyiRc = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    if ($pyiRc -ne 0) { throw "PyInstaller failed with rc=$pyiRc" }
     Copy-Item -LiteralPath (Join-Path $work "dist\mcstools.exe") $Out -Force
 } finally {
     Pop-Location
