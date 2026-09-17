@@ -19,6 +19,14 @@ from __future__ import annotations
 
 import sys
 
+# 目标机 / CI 的控制台默认编码可能是 cp1252 等非 UTF-8，打印中文会抛 UnicodeEncodeError。
+# 统一把标准输出/错误重设为 UTF-8（无法重设时忽略）。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import fix_mcs_labels
 import mcs_ir
 import mcs_dce
