@@ -12,6 +12,7 @@
 //! `on_t0`，由 ISR `ecall` 调用（它有完整 prologue/epilogue + `ret`），不会破坏 ISR 的 reti 语义。
 
 const m = @import("mcs");
+const builtin = @import("builtin");
 
 /// 1ms 计数（全局；每 1000 次 = 1 秒）。
 var tick_ms: u16 = 0;
@@ -53,15 +54,27 @@ export fn on_t0() void {
 }
 
 /// Timer0 中断入口：只保存 ACC/PSW、调用 Zig 处理、恢复、reti（本身无帧）。
+/// mcs251 用 4 字节 `ecall`，mcs51 用 3 字节 `lcall`（选择在编译期按目标架构定）。
 export fn t0_isr() void {
-    asm volatile (
-        \\push 0xe0
-        \\push 0xd0
-        \\ecall _on_t0
-        \\pop 0xd0
-        \\pop 0xe0
-        \\reti
-    );
+    if (comptime builtin.cpu.arch == .mcs51) {
+        asm volatile (
+            \\push 0xe0
+            \\push 0xd0
+            \\lcall _on_t0
+            \\pop 0xd0
+            \\pop 0xe0
+            \\reti
+        );
+    } else {
+        asm volatile (
+            \\push 0xe0
+            \\push 0xd0
+            \\ecall _on_t0
+            \\pop 0xd0
+            \\pop 0xe0
+            \\reti
+        );
+    }
 }
 
 export fn main() void {

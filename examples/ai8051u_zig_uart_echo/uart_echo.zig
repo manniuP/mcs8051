@@ -10,6 +10,7 @@
 //! - 波特率 115200@40MHz：Timer2 作发生器、1T（同 STC 例程 `T2H:T2L=0xFFA9`）。
 
 const m = @import("mcs");
+const builtin = @import("builtin");
 
 /// UART1 初始化：模式1、REN=1、Timer2 作波特率发生器、开 UART1 中断。
 fn uartInitT2(comptime fosc: u32, comptime baud: u32) void {
@@ -62,16 +63,28 @@ export fn on_uart() void {
     }
 }
 
-/// UART1 中断入口（中断号 4，向量 FF:0023）：无帧，只存 ACC/PSW、调用 Zig 处理、reti。
+/// UART1 中断入口（中断号 4；向量 FF:0023，mcs51 为 0x0023）：无帧，只存 ACC/PSW、
+/// 调用 Zig 处理、reti。mcs251 用 4 字节 `ecall`，mcs51 用 3 字节 `lcall`。
 export fn uart_isr() void {
-    asm volatile (
-        \\push 0xe0
-        \\push 0xd0
-        \\ecall _on_uart
-        \\pop 0xd0
-        \\pop 0xe0
-        \\reti
-    );
+    if (comptime builtin.cpu.arch == .mcs51) {
+        asm volatile (
+            \\push 0xe0
+            \\push 0xd0
+            \\lcall _on_uart
+            \\pop 0xd0
+            \\pop 0xe0
+            \\reti
+        );
+    } else {
+        asm volatile (
+            \\push 0xe0
+            \\push 0xd0
+            \\ecall _on_uart
+            \\pop 0xd0
+            \\pop 0xe0
+            \\reti
+        );
+    }
 }
 
 export fn main() void {

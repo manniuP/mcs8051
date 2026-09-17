@@ -46,6 +46,16 @@
 //! ```
 
 // ---------------------------------------------------------------------------
+// 目标架构
+// ---------------------------------------------------------------------------
+
+const builtin = @import("builtin");
+
+/// 目标为 8 位 MCS-51 时为 true。仅影响位操作数的汇编语法：
+/// sdas8051 用 `addr^bit`，sdas251（mcs251）用 `addr.bit`。
+const is_mcs51 = builtin.cpu.arch == .mcs51;
+
+// ---------------------------------------------------------------------------
 // 内部：comptime 十六进制/十进制字符
 // ---------------------------------------------------------------------------
 
@@ -152,21 +162,21 @@ pub inline fn sfrAnd(comptime addr: u8, comptime mask: u8) void {
 ///
 /// 示例：`bitSet(0x90, 1); // P1.1 = 1`；`bitSet(0x21, 3); // RAM 0x21.3 = 1`
 pub inline fn bitSet(comptime addr: u8, comptime bit: u3) void {
-    asm volatile ("setb 0x" ++ hex2(addr) ++ "." ++ dec1(bit));
+    asm volatile ("setb 0x" ++ hex2(addr) ++ (if (is_mcs51) "^" else ".") ++ dec1(bit));
 }
 
 /// 位清 0：`clr addr.bit`。
 ///
 /// 示例：`bitClr(0x90, 1); // P1.1 = 0（LED 亮）`
 pub inline fn bitClr(comptime addr: u8, comptime bit: u3) void {
-    asm volatile ("clr 0x" ++ hex2(addr) ++ "." ++ dec1(bit));
+    asm volatile ("clr 0x" ++ hex2(addr) ++ (if (is_mcs51) "^" else ".") ++ dec1(bit));
 }
 
 /// 位取反：`cpl addr.bit`。
 ///
 /// 示例：`bitCpl(0x90, 1); // P1.1 翻转`
 pub inline fn bitCpl(comptime addr: u8, comptime bit: u3) void {
-    asm volatile ("cpl 0x" ++ hex2(addr) ++ "." ++ dec1(bit));
+    asm volatile ("cpl 0x" ++ hex2(addr) ++ (if (is_mcs51) "^" else ".") ++ dec1(bit));
 }
 
 /// 取 SFR/RAM 字节的指针（`data` 直址区 0x00–0xFF），可读可写。

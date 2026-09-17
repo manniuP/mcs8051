@@ -10,6 +10,8 @@ rem   build.cmd ziglog          :: build ziglog only  -> ziglog\log.ihx
 rem   build.cmd t0print         :: build t0print only -> t0print\t0print.ihx
 rem   build.cmd uart_echo       :: build uart_echo only -> uart_echo\uart_echo.ihx
 rem   build.cmd ziglog -Dmcs-small=true    (extra args are forwarded as-is)
+rem   build.cmd t0print -Darch=mcs51       (8-bit MCS-51; ziglog stays mcs251-only)
+rem   build.cmd ziglog --runner            (Zig examples: use the bundled prebuilt build_runner.exe)
 setlocal
 
 set "HERE=%~dp0"

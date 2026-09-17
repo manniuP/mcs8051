@@ -16,6 +16,16 @@ const sdas = "../toolchain/sdcc/bin/sdas251.exe";
 const mcstools = "../toolchain/mcstools/mcstools.exe";
 
 pub fn build(b: *std.Build) void {
+    // ziglog 仅 mcs251：mcs51 后端每个函数一块静态帧，全部落在内部 RAM 直接区（≤128B）；
+    // 本示例（COBS + 多函数）的 DSEG 已 200+B，链不上（主工程 8 位 COBS 因此改用 C）。
+    const arch = b.option([]const u8, "arch", "目标架构：仅支持 mcs251") orelse "mcs251";
+    if (!std.mem.eql(u8, arch, "mcs251")) {
+        std.debug.print(
+            "error: ziglog 仅支持 mcs251（-Darch=mcs51 不可用：mcs51 Zig 静态帧超出内部 RAM 直接区 128B）\n",
+            .{},
+        );
+        std.process.exit(2);
+    }
     const code_loc = b.option([]const u8, "code-loc", "代码区基址（AI8051U = 0xff0000）") orelse "0xff0000";
     const small = b.option(bool, "mcs-small", "Zig 侧 -OReleaseSmall（默认 -ODebug）") orelse false;
     const opt: []const u8 = if (small) "-OReleaseSmall" else "-ODebug";

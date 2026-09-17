@@ -99,6 +99,7 @@ foreach ($f in @("build.zig", "build.cmd")) {
 # [5b] t0print example: program + hardware lib + crt0 + build scripts
 Copy-Item -LiteralPath (Join-Path $exT0 "t0print.zig") (Join-Path $Out "t0print\t0print.zig") -Force
 Copy-Item -LiteralPath (Join-Path $exT0 "crt0.asm")    (Join-Path $Out "t0print\crt0.asm") -Force
+Copy-Item -LiteralPath (Join-Path $exT0 "crt0_mcs51.asm") (Join-Path $Out "t0print\crt0_mcs51.asm") -Force
 Copy-Item -LiteralPath $mcsLib                          (Join-Path $Out "t0print\mcs251.zig") -Force
 foreach ($f in @("build.zig", "build.cmd")) {
     Copy-Item -LiteralPath (Join-Path $portT0 $f) (Join-Path $Out "t0print\$f") -Force
@@ -107,20 +108,52 @@ foreach ($f in @("build.zig", "build.cmd")) {
 # [5d] uart_echo example: program + hardware lib + crt0 + build scripts
 Copy-Item -LiteralPath (Join-Path $exUe "uart_echo.zig") (Join-Path $Out "uart_echo\uart_echo.zig") -Force
 Copy-Item -LiteralPath (Join-Path $exUe "crt0.asm")      (Join-Path $Out "uart_echo\crt0.asm") -Force
+Copy-Item -LiteralPath (Join-Path $exUe "crt0_mcs51.asm") (Join-Path $Out "uart_echo\crt0_mcs51.asm") -Force
 Copy-Item -LiteralPath $mcsLib                            (Join-Path $Out "uart_echo\mcs251.zig") -Force
 foreach ($f in @("build.zig", "build.cmd")) {
     Copy-Item -LiteralPath (Join-Path $portUe $f) (Join-Path $Out "uart_echo\$f") -Force
 }
 
-# [5c] device memory model JSON for the Zig examples (embedded by their build.zig via
-#      @embedFile("device.json"), so no env var / Python is needed on the target machine,
-#      and variable placement matches the main (xmake) build byte-for-byte).
+# [5c] device memory model JSON for the Zig examples. It is used two ways:
+#      - build.zig embeds it via @embedFile("device.json") (optional `zig build` path);
+#      - the default build.cmd loads it with `set /p MCS_DEVICE=<device.json`, which
+#        reads exactly one line, so emit it as a SINGLE LINE (no CR/LF).
+#      Values are unchanged, so variable placement still matches the main (xmake) build
+#      byte-for-byte.
 $devToml = Join-Path $repo $Device
 if (-not (Test-Path -LiteralPath $devToml)) { throw "missing device: $devToml" }
-$deviceJson = (& $Python (Join-Path $repo "tools\mcs_device.py") $devToml --emit compiler-json) -join "`n"
+$deviceJson = ((& $Python (Join-Path $repo "tools\mcs_device.py") $devToml --emit compiler-json) -join "`n") -replace "`r?`n", ""
 foreach ($d in @("ziglog", "t0print", "uart_echo")) {
     [System.IO.File]::WriteAllText((Join-Path $Out "$d\device.json"), $deviceJson,
                                    (New-Object System.Text.ASCIIEncoding))
+}
+
+# [5e] Prebuilt build runner for the Zig examples (option 2). `build.cmd --runner`
+#      runs this instead of `zig build`, so the target machine never compiles host
+#      x86_64 code with the self-hosted backend (avoids 0xC0000094 / exit code 148).
+#      Build it here with a host zig that has LLVM (prefer `zig` on PATH); the bundled
+#      zig would itself go through the fragile self-hosted backend. `zig build -l`
+#      only configures and compiles the runner, it does not run the MCS build steps.
+$hostZig = $null
+$zigCmd = Get-Command zig -ErrorAction SilentlyContinue
+if ($zigCmd) { $hostZig = $zigCmd.Source }
+if (-not $hostZig) {
+    Write-Warning "no system 'zig' on PATH; falling back to the bundled zig for build_runner.exe"
+    $hostZig = $zigBin
+}
+foreach ($d in @("ziglog", "t0print", "uart_echo")) {
+    $dir = Join-Path $Out $d
+    Push-Location $dir
+    try { & $hostZig build -l 2>&1 | Out-Null } catch {}
+    Pop-Location
+    $runner = Get-ChildItem -Recurse (Join-Path $dir ".zig-cache") -Filter build.exe -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($runner) {
+        Copy-Item -LiteralPath $runner.FullName (Join-Path $dir "build_runner.exe") -Force
+        Remove-Item -Recurse -Force (Join-Path $dir ".zig-cache")
+    } else {
+        Write-Warning "could not build build_runner.exe for $d (build.cmd --runner will be unavailable)"
+    }
 }
 
 # [6] root dispatcher, docs, git config
