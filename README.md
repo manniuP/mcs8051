@@ -58,4 +58,4 @@ xmake build ziglog          # 纯 Zig；C 目标如 uart/led 走 SDCC
 
 - `compiler/`（上游 Zig fork）：**MIT**
 - `sdcc/`（上游 SDCC fork）：**GPL-2.0**
-- 本仓内容（`examples/`、`lib/`、`devices/`、`tools/`、`docs/`、`xmake/`）：**GPL-2.0**（见 [`COPYING`](COPYING)）
+- 本仓内容（`examples/`、`lib/`、`devices/`、`tools/`、`docs/`、`xmake/`）：**Apache-2.0**（见 [`LICENSE`](LICENSE)）
