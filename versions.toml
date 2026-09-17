@@ -13,6 +13,6 @@ upstream_commit = "7056ba9a5c750305726be862a51ff18e2318c138"
 [sdcc]
 name = "sdcc-c251"
 url = "https://github.com/manniuP/sdcc-c251"
-branch = "main"
+branch = "mcs251-backend"
 commit = "672c1c52a8d70e2143adf9257f230f6c93b0fe6e"
 upstream = "https://git.code.sf.net/p/sdcc/git-mirror"
