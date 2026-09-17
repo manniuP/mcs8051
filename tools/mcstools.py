@@ -3,7 +3,7 @@
 """mcstools.py — 构建层 Python 工具的单一入口（供 PyInstaller 冻结为 mcstools.exe）。
 
 把这些只依赖标准库的后处理工具合并成一个可执行文件，目标机**无需安装 Python**即可完成
-构建层后处理（便携工具链集用）。
+构建层后处理（便携工���链集用）。
 
 用法（源码 / exe 一致）：
     mcstools fix     <asm>   # 等价 tools/fix_mcs_labels.py —— 修局部标签重名
@@ -17,10 +17,12 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 # 目标机 / CI 的控制台默认编码可能是 cp1252 等非 UTF-8，打印中文会抛 UnicodeEncodeError。
-# 统一把标准输出/错误重设为 UTF-8（无法重设时忽略）。
+# 强制使用 UTF-8，避免 Windows 代码页导致的崩溃。
+os.environ.setdefault("PYTHONUTF8", "1")
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace")
