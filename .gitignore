@@ -76,8 +76,10 @@
 !/examples/ai8051u_zig_ns/crt0.asm
 /examples/ai8051u_zig_t0print/*.asm
 !/examples/ai8051u_zig_t0print/crt0.asm
+!/examples/ai8051u_zig_t0print/crt0_mcs51.asm
 /examples/ai8051u_zig_uart_echo/*.asm
 !/examples/ai8051u_zig_uart_echo/crt0.asm
+!/examples/ai8051u_zig_uart_echo/crt0_mcs51.asm
 # 例外：手工编写的参考 asm（非构建产物）
 !/examples/ai8051u_ptrtest/ptrtest_correct.asm
 !/examples/ai8051u_ptrtest/test_dr28.asm
