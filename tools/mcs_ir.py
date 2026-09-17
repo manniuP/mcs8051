@@ -32,6 +32,10 @@ from pathlib import Path
 
 # --- 行分类 -----------------------------------------------------------------
 TRACE_RE = re.compile(r"^\s*;\s*v\d+\s+\S+")
+# 冷热标签注释（后端 `link/Asx.zig` 发出）：`; @tag <func|sym> <name> <hot|cold|default>`。
+TAG_RE = re.compile(r"^\s*;\s*@tag\s+(\S+)\s+(\S+)\s+(\S+)")
+# 最近一次 optimize() 解析到的标签：[(kind, name, tag), ...]
+TAGS = []
 LABEL_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*):")
 GFUNC_RE = re.compile(r"^_\w+:\s*$")
 MEM_RE = re.compile(r"@spx(?P<off>-?0x[0-9a-fA-F]+|-?\d+)?")
@@ -474,7 +478,10 @@ def _block_dse(lines):
 
 
 def optimize(lines):
-    """反复应用规则直至稳定，最后删除 IR 提示注释。"""
+    """反复应用规则直至稳定，最后删除 IR 提示与冷热标签注释。"""
+    global TAGS
+    TAGS = [m.group(1, 2, 3) for m in
+            (TAG_RE.match(ln.rstrip("\n")) for ln in lines) if m]
     cur = list(lines)
     for _ in range(12):
         dead = set()
@@ -484,8 +491,9 @@ def optimize(lines):
         if not dead:
             break
         cur = [ln for i, ln in enumerate(cur) if i not in dead]
-    # 删除 IR 提示注释。
-    cur = [ln for ln in cur if not TRACE_RE.match(ln.rstrip("\n"))]
+    # 删除 IR 提示与冷热标签注释（标签已记入 TAGS，供调用方使用）。
+    cur = [ln for ln in cur
+           if not TRACE_RE.match(ln.rstrip("\n")) and not TAG_RE.match(ln.rstrip("\n"))]
     return cur
 
 
@@ -677,6 +685,10 @@ def main(argv):
         _write(path, out)
         if show_stats:
             print(f"mcs_ir: {path.name}: 指令 {before} -> {after}（省 {before - after}）")
+            from collections import Counter
+            cnt = Counter(t for _k, _n, t in TAGS)
+            summary = " ".join(f"{t}x{c}" for t, c in sorted(cnt.items())) or "（无）"
+            print(f"       标签：{summary}（放置/O 等级由后端应用；本工具消费注释后删除）")
     return 0
 
 
