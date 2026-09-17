@@ -5,3 +5,4 @@
 [submodule "sdcc"]
 	path = sdcc
 	url = https://github.com/manniuP/sdcc-c251.git
+	branch = mcs251-backend
