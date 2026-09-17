@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "xmake: build app",
+      "type": "shell",
+      "command": "xmake",
+      "args": ["build", "-P", ".", "app"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "zig build (build.zig)",
+      "type": "shell",
+      "command": "zig",
+      "args": ["build"],
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+# build 输出（CMake）
+build/
+compile_commands.json
+.cache/

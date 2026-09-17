@@ -1,0 +1,133 @@
+# ===== 顶层结构（分类）=====
+#   compiler/  MCS 后端编译器源码（Zig + 目标定义）
+#   lib/       可复用库与头文件（mcs251.zig、cobs/、uart251/、stc-hal/、include/、crt0/）
+#   examples/  各示例工程
+#   docs/      文档
+#   tools/     构建/辅助工具与预编译工具链（sdcc-mcs251-windows-x64/、vendor/）
+
+# Local build outputs
+/out/
+/build/
+/zig.master-1415.bak
+/tools/wsl_build_sdcc.sh
+
+# Zig 编译器构建产物与缓存（compiler/ 是源码）
+/compiler/zig-out/
+/compiler/zig-dbg-out/
+/compiler/stage3-out/
+/compiler/.zig-cache*/
+# 上游之外误入 compiler/ 的本地杂物
+/compiler/build_options.zig
+/compiler/session-ses_f65c.md
+/compiler/test.obj
+
+# SDCC 上游 fork 源码与预编译产物（独立管理；工具链已移到 tools/ 下）
+/sdcc-c251/
+/docs-c251/
+/sdcc-c251-build.log
+/tools/sdcc-mcs251-windows-x64/
+
+# STC 官方 SDK / 受版权资料（本机存放，不提交）
+/tools/vendor/
+
+# 旧构建脚本（已被 xmake.lua 取代）；示例内的遗留脚本
+/examples/ai8051u_blink/build.ps1
+
+# 构建产物（sdcc/sdas/sdld 输出）
+*.ihx
+*.rel
+*.lk
+*.mem
+*.rst
+*.sym
+*.lst
+*.dumpcustom*
+*.map
+
+# Zig 后端生成的汇编（.zig 是源，.asm 是产物）
+/examples/ai8051u_blink/*.asm
+/examples/ai8051u_ptrtest/*.asm
+/examples/at89c52_sim/*.asm
+/examples/ai8051u_led/*.asm
+/examples/ai8051u_uart/*.asm
+/examples/ai8051u_zig_led/*.asm
+!/examples/ai8051u_zig_led/crt0.asm
+/examples/ai8051u_zig_asm/*.asm
+!/examples/ai8051u_zig_asm/crt0.asm
+/examples/ai8051u_zig_irq/*.asm
+!/examples/ai8051u_zig_irq/crt0.asm
+/examples/ai8051u_zig_irq_all/*.asm
+!/examples/ai8051u_zig_irq_all/crt0.asm
+/examples/ai8051u_zig_mem/*.asm
+!/examples/ai8051u_zig_mem/crt0.asm
+/examples/ai8051u_zig_hotcold/*.asm
+!/examples/ai8051u_zig_hotcold/crt0.asm
+/examples/ai8051u_zig_buzz/*.asm
+!/examples/ai8051u_zig_buzz/crt0.asm
+/examples/ai8051u_zig_log/*.asm
+!/examples/ai8051u_zig_log/crt0.asm
+/examples/ai8051u_zig_rtindex/*.asm
+!/examples/ai8051u_zig_rtindex/crt0.asm
+/examples/ai8051u_zig_slice/*.asm
+!/examples/ai8051u_zig_slice/crt0.asm
+/examples/ai8051u_zig_rtslice/*.asm
+!/examples/ai8051u_zig_rtslice/crt0.asm
+/examples/ai8051u_zig_ns/*.asm
+!/examples/ai8051u_zig_ns/crt0.asm
+/examples/ai8051u_zig_t0print/*.asm
+!/examples/ai8051u_zig_t0print/crt0.asm
+/examples/ai8051u_zig_uart_echo/*.asm
+!/examples/ai8051u_zig_uart_echo/crt0.asm
+# 例外：手工编写的参考 asm（非构建产物）
+!/examples/ai8051u_ptrtest/ptrtest_correct.asm
+!/examples/ai8051u_ptrtest/test_dr28.asm
+
+# ptrtest 调试/构建产物（仅 ptrtest.zig 与 main.c 是源）
+/examples/ai8051u_ptrtest/*.txt
+/examples/ai8051u_ptrtest/*.log
+/examples/ai8051u_ptrtest/*.ihex
+/examples/ai8051u_ptrtest/ptrtest
+/examples/ai8051u_ptrtest/noptr
+/examples/ai8051u_ptrtest/noptr.zig
+/examples/ai8051u_ptrtest/simple
+/examples/ai8051u_ptrtest/simple.zig
+/examples/ai8051u_ptrtest/simplest
+/examples/ai8051u_ptrtest/simplest.zig
+/examples/ai8051u_ptrtest/empty.zig
+/examples/ai8051u_ptrtest/min.ihex
+/examples/ai8051u_ptrtest/min.zig
+
+# cobs 主机测试产物
+/lib/cobs/*.exe
+# cordic 主机测试产物
+/lib/cordic/*.exe
+
+# 由源码打包的 SDCC 库（生成物）
+/examples/ai8051u_usb_cdc/*.lib
+
+# USB 示例：SDCC 由 .c 生成的汇编（.c 是源）
+/examples/ai8051u_usb_cdc/src/*.asm
+/examples/ai8051u_usb_hid/src/*.asm
+/examples/ai8051u_usb_cdc_cobs/*.asm
+/examples/mcs51_c_cobs/*.asm
+/examples/ai8051u_mdu/*.asm
+/examples/ai8051u_cmd/*.asm
+__pycache__/
+
+# Zig / xmake 构建缓存
+.zig-cache/
+*.zig-cache*/
+.xmake/
+
+# Editors / OS
+.vs/
+.vscode/
+*.user
+Thumbs.db
+desktop.ini
+
+# 例外：VSCode 示例工程保留 .vscode 配置
+!/examples/vscode_c_cmake/.vscode/
+!/examples/vscode_c_cmake/.vscode/**
+!/examples/vscode_mixed_xmake_zig/.vscode/
+!/examples/vscode_mixed_xmake_zig/.vscode/**

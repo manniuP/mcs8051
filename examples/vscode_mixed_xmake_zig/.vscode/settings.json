@@ -1,0 +1,14 @@
+{
+  "clangd.arguments": [
+    "--background-index",
+    "--header-insertion=never",
+    "--completion-style=detailed"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "files.associations": {
+    "*.h": "c",
+    "*.c": "c",
+    "*.zig": "zig"
+  },
+  "zig.buildOnSaveProvider": false
+}
