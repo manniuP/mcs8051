@@ -1,7 +1,7 @@
 [submodule "compiler"]
 	path = compiler
-	url = https://github.com/huip20440/zig-mcs51-backend.git
+	url = https://github.com/manniuP/zig-mcs51-backend.git
 	branch = mcs251-backend
 [submodule "sdcc"]
 	path = sdcc
-	url = https://github.com/huip20440/sdcc-c251.git
+	url = https://github.com/manniuP/sdcc-c251.git
