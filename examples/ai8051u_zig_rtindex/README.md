@@ -35,6 +35,6 @@ xmake 链接参数固定。
 ## QEMU 无板仿真
 
 ```bash
-wsl -e bash <workspace>/mcs251/tools/qemu_mcs_run.sh \
-  <workspace>/mcs251/examples/ai8051u_zig_rtindex/rtindex.ihx
+wsl -e bash tools/qemu_mcs_run.sh \
+  examples/ai8051u_zig_rtindex/rtindex.ihx
 ```

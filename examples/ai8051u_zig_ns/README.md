@@ -29,6 +29,6 @@ STC-ISP（AiCube）选 `AI8051U-34K64`，烧 `ns.ihx`，串口（COMx @9600）�
 ## QEMU 无板仿真
 
 ```bash
-wsl -e bash <workspace>/mcs251/tools/qemu_mcs_run.sh \
-  <workspace>/mcs251/examples/ai8051u_zig_ns/ns.ihx
+wsl -e bash tools/qemu_mcs_run.sh \
+  examples/ai8051u_zig_ns/ns.ihx
 ```
