@@ -45,6 +45,8 @@
 *.map
 
 # Zig 后端生成的汇编（.zig 是源，.asm 是产物）
+# 差分回归中间产物（MCS_KEEP_BASE=1 时 mcs_ir 之前的 asm，见 tools/mcs_regress.py）
+*.asm.base
 /examples/ai8051u_blink/*.asm
 /examples/ai8051u_ptrtest/*.asm
 /examples/at89c52_sim/*.asm

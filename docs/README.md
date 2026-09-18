@@ -44,6 +44,10 @@
 - [18-后端尺寸与mcs51多字节端序](18-后端尺寸与mcs51多字节端序.md) —— `appendAdjust` 单条
   `add/sub spx,#imm16`、`-OReleaseSmall` 条件融合扩展（`.not`/`.bool_and`/`.bool_or`）、
   **MCS-51 多字节内存读端序修复**（`memByteDisp`）、延伸的 mcs51 自检。
+- [21-指令周期参考与bench验证](21-指令周期参考与bench验证.md) —— AI8051U 附录A.1.3 指令周期
+  参考表 + `tools/mcs_cycles.py`（逐条/按函数静态周期）+ 真机 `zigbench` 逐周期验证 + 优化收益计算。
+- [22-循环下行计数DJNZ](22-循环下行计数DJNZ.md) —— 构建层 `tools/mcs_loop.py`：把后端生成的
+  计数 `while` 循环改写为「下行计数 + `djnz`」（`MCS_LOOP=1`），真机 `zigbench` 读循环 −63%~−70%。
 
 源码位置：`../examples/ai8051u_blink/`、`../examples/ai8051u_ptrtest/`
 （3 字节指针互操作见 [07](07-调试笔记-ptr_rt自举崩溃定位.md)）。

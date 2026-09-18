@@ -60,10 +60,20 @@ function postprocess_asm(projdir, asm)
     if os.isfile(opt) then
         os.vrunv(python, {opt, asm})
     end
+    -- 差分回归（E2）：MCS_KEEP_BASE=1 时保留 mcs_ir 之前的 asm（即 base=fix+mcs_opt），
+    -- 供 tools/mcs_regress.py 与最终（opt=+mcs_ir）逐行比对。默认不生成。
+    if os.getenv("MCS_KEEP_BASE") and os.getenv("MCS_KEEP_BASE") ~= "0" then
+        os.trycp(asm, asm .. ".base")
+    end
     -- IR 提示消费 + 死 store 消除（mcs251 有效；mcs51 无 @spx，空操作）。
     local ir = path.join(projdir, "tools/mcs_ir.py")
     if os.isfile(ir) then
         os.vrunv(python, {ir, asm})
+    end
+    -- 计数 while 循环 -> 下行计数 + DJNZ（默认关；MCS_LOOP=1 启用，工具内自判）。
+    local loop = path.join(projdir, "tools/mcs_loop.py")
+    if os.isfile(loop) then
+        os.vrunv(python, {loop, asm})
     end
     local ovl = path.join(projdir, "tools/mcs_overlay.py")
     if os.isfile(ovl) then

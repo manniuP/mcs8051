@@ -88,7 +88,8 @@ fn benchXdata() u16 {
     return d;
 }
 
-// 同一函数体，只有 O 等级不同：O0 速度优先 / O5 体积优先
+// 同一函数体，只有 O 等级标签不同：Ofast=速度优先 / Os=体积优先。
+// （真机验证「周期数随标签走」时可临时互换两标签，见 README §B。）
 fn accFast(n: u8) linksection(".Ofast") u8 {
     var s: u8 = 0;
     var i: u8 = 0;

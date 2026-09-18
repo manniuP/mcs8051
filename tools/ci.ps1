@@ -31,9 +31,31 @@ function Step([string]$name, [scriptblock]$body) {
 
 # ---- 1) mcs251 targets ----
 Step "xmake configure (mcs251)" { xmake f --mcs_arch=mcs251 }
+# MCS_KEEP_BASE=1: also emit the pre-mcs_ir asm (base=fix+mcs_opt) as <x>.asm.base,
+# used by the differential regression below. Reset before the mcs51 section.
+$env:MCS_KEEP_BASE = "1"
 $targets = @("ziglog","zigled","zigasm","zigirq","zigirqall","zigprint","ziguart","zigmem","zighotcold","zigrtindex","zigslice","zigrtslice","zigns","zigbuzz","ptrtest","uart","ccobs")
 if (-not $SkipUsb) { $targets += @("usbcdc","usbhid","usbcdcobs") }
 foreach ($t in $targets) { Step ("build " + $t) { xmake build $t } }
+
+# ---- 1b) optimization regression (assertion budgets + E2 base/opt diff) ----
+Step "regress: mcs_ir self-test" { python tools\mcs_ir.py --self-test }
+Step "regress: mcs_opt self-test" { python tools\mcs_opt.py --self-test }
+Step "regress: mcs_loop self-test" { python tools\mcs_loop.py --self-test }
+Step "regress: mcs_regress self-test" { python tools\mcs_regress.py --self-test }
+Step "regress: E2 base vs opt + budgets" {
+    python tools\mcs_regress.py --auto `
+        examples\ai8051u_zig_opt\opt.asm `
+        examples\ai8051u_zig_ns\ns.asm `
+        examples\ai8051u_zig_mem\mem.asm `
+        examples\ai8051u_zig_slice\slice.asm `
+        examples\ai8051u_zig_log\log.asm `
+        examples\ai8051u_zig_buzz\buzzer.asm `
+        examples\ai8051u_zig_rtindex\rtindex.asm `
+        examples\ai8051u_zig_hotcold\hotcold.asm `
+        --require-reduction
+}
+$env:MCS_KEEP_BASE = "0"
 
 # ---- 2) mcs51 ----
 Step "xmake configure (mcs51)" { xmake f --mcs_arch=mcs51 }

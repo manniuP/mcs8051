@@ -14,6 +14,7 @@
 | `examples/ai8051u_usb_cdc/src/` | STC 官方 `AI8051U-DEMO-CODE-V1.2` 的 USB-CDC 例程（Keil C251） | 由 `tools/keil2sdcc_c.py` 翻译为本工具链可编译的 SDCC C，属衍生作品 |
 | `examples/ai8051u_usb_hid/src/` | 同上，HID 例程 | 同上 |
 | `lib/include/ai8051u_sfr.h` | STC 官方 Keil 头 `AI8051U.keil.h` | 由 `tools/keil2sdcc.py` 自动生成 |
+| `docs/21-指令周期参考与bench验证.md`、`tools/mcs_cycles.py` | STC 官方 `AI8051U` 手册 附录A.1.3 指令表 | 指令周期**数据**的摘录/整理（事实性数据，注明出处） |
 
 > 版权归 STC；此处仅用于 STC 芯片的兼容 / 移植。再分发请保留 STC 原始声明并遵守 STC 的条款。
 > 本仓**未分发**的 STC 资料（Keil 头 / SDK 原件等）放在 `.gitignore` 排除的 `tools/vendor/`，
