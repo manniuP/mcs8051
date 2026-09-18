@@ -6,13 +6,10 @@ schema = 1
 name = "zig-mcs51-backend"
 url = "https://github.com/manniuP/zig-mcs51-backend"
 branch = "mcs251-backend"
-commit = "4d33ecde0d5a4ae69c370ce4e5fb91af50ed4409"
+commit = "bd6913dc4830ef92e8b1fde2dab47b8b99055741"
 upstream = "https://github.com/ziglang/zig"
 upstream_commit = "7056ba9a5c750305726be862a51ff18e2318c138"
 
-[sdcc]
-name = "sdcc-c251"
-url = "https://github.com/manniuP/sdcc-c251"
-branch = "mcs251-backend"
-commit = "b2081950f1b7ba1775c72c76e7c8c1bc5778b567"
-upstream = "https://git.code.sf.net/p/sdcc/git-mirror"
+# SDCC（MCS-251）使用预编译工具链，非子模块：
+#   仓库 https://github.com/gevico/sdcc-c251
+#   版本 v4.6.0-mcs251-20260804（见 .github/workflows/portable.yml）

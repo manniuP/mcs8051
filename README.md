@@ -3,13 +3,16 @@
 面向 Intel 8051（MCS-51）/ 80251（MCS-251）的 **Zig + C 工具链工作区**（集成仓），
 目标为 STC / AI 系列芯片。
 
-本仓只放**项目自身内容**（示例、库、设备描述表、构建脚本、文档）；两个编译器以
-**git submodule** 引入并固定到具体提交，固定版本记录见 [`versions.toml`](versions.toml)。
+本仓只放**项目自身内容**（示例、库、设备描述表、构建脚本、文档）；Zig 编译器以
+**git submodule** 引入并固定到具体提交（固定版本见 [`versions.toml`](versions.toml)）；
+SDCC 使用**预编译工具链**，不作子模块（见 `.github/workflows/portable.yml`、`tools/`）。
 
 | 子模块 | 仓库 | 作用 |
 | --- | --- | --- |
 | `compiler/` | [manniuP/zig-mcs51-backend](https://github.com/manniuP/zig-mcs51-backend) | Zig 自举后端：Zig 源 → MCS-51/251 汇编（ASxxxx） |
-| `sdcc/` | [manniuP/sdcc-c251](https://github.com/manniuP/sdcc-c251) | SDCC（MCS-251 目标）：编译 C、`sdas`/`sdld` 汇编链接 |
+
+> SDCC（MCS-251 目标：编译 C、`sdas`/`sdld` 汇编链接）使用**预编译工具链**，
+> 见 [gevico/sdcc-c251](https://github.com/gevico/sdcc-c251)，**不作为子模块**引入。
 
 ## 获取
 
@@ -24,7 +27,6 @@ git submodule update --init --recursive
 | 路径 | 说明 |
 | --- | --- |
 | `compiler/`（submodule） | Zig + MCS-51/251 后端 |
-| `sdcc/`（submodule） | SDCC MCS-251 fork |
 | `examples/` | 示例工程（C / 纯 Zig / C+Zig 混编） |
 | `lib/` | 库与头文件（`mcs251.zig`、`cobs/`、`uart251/`、`crt0/`、`include/`） |
 | `devices/` | STC/AI 设备描述表（TOML）与工具 |
@@ -65,7 +67,7 @@ xmake build ziglog          # 纯 Zig；C 目标如 uart/led 走 SDCC
 ## 许可
 
 - `compiler/`（上游 Zig fork）：**MIT**
-- `sdcc/`（上游 SDCC fork）：**GPL-2.0**
+- SDCC（[gevico/sdcc-c251](https://github.com/gevico/sdcc-c251)，预编译工具链）：**GPL-2.0**
 - 本仓内容（`examples/`、`lib/`、`devices/`、`tools/`、`docs/`、`xmake/`）：**Apache-2.0**（见 [`LICENSE`](LICENSE)）
 - ⚠️ 含少量 **STC 官方版权 / 衍生**内容（`lib/stc-hal/`、`examples/ai8051u_usb_{cdc,hid}/src/`、
   `lib/include/ai8051u_sfr.h`），**不适用 Apache-2.0**；版权与条款见 [`THIRD-PARTY.md`](THIRD-PARTY.md)。

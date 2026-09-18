@@ -28,7 +28,8 @@
 
 - 本仓**未复制** SDCC 源码；`lib/crt0/*.asm` 系参考 SDCC 文档（`sdcc-c251/doc/mcs251/abi.md`）
   自行编写。
-- SDCC 及其 MCS-251 分支为 **GPL**，见独立仓 `manniuP/sdcc-c251`。
+- SDCC 及其 MCS-251 分支为 **GPL**，见 [gevico/sdcc-c251](https://github.com/gevico/sdcc-c251)；
+  本仓使用其**预编译工具链**（`v4.6.0-mcs251-20260804`），不维护个人 fork。
 
 ## 其它
 
