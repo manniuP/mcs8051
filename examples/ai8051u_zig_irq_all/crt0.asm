@@ -2,13 +2,15 @@
 ; 每个向量 8 字节间隔：`ejmp _sym`（4 字节）+ `.ds 4`；稀疏处按地址补 `.ds`。
 ; 复位 FF:0000 用 3 字节 `ljmp`，正好让出 FF:0003 给 INT0。
 ; 所有 ISR 由 isr 模块 `export fn` 提供（导出符号 `_<name>`）。
-; 空声明 PSEG/ISEG/BSEG 以满足 sdcc 生成的 .lk。
+; 空声明 PSEG/ISEG/BSEG/XSEG 以满足 sdcc 生成的 .lk。
+; （本示例无 xdata 变量，若不明确定义 XSEG，ASlink 会报 `No definition of area XSEG`。）
 
 	.module crt0
 	.area PSEG    (PAG,XDATA)
 	.area DSEG    (DATA)
 	.area ISEG    (DATA)
 	.area BSEG    (BIT)
+	.area XSEG    (XDATA)
 	.area HOME    (CODE)
 
 	.globl _main

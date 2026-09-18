@@ -12,6 +12,9 @@ on:
   push:
     paths:
       - '.github/workflows/build-both.yml'
+      - 'examples/**'
+      - 'lib/**'
+      - 'tools/**'
 
 permissions:
   contents: read
