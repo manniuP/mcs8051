@@ -80,6 +80,16 @@ if (-not $SkipSim) {
     $rootWsl = "/mnt/" + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/')
     # STC15 ucsim（本机自建；可用环境变量 UCSIM51 覆盖）。
     $ucsim = if ($env:UCSIM51) { $env:UCSIM51 } else { "~/ucsim-stc/ucsim/src/sims/s51.src/ucsim_51" }
+    # 生成 ucsim 命令文件（simtest 结果在 xram 0x8000）：缺省即写，避免静默跳过。
+    if (-not (Test-Path -LiteralPath $cmd)) {
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $cmd)
+        Set-Content -LiteralPath $cmd -Encoding Ascii -Value @(
+            "set opt selfjump_stop 0",
+            "set error unknown_code off",
+            "step 20000",
+            "dump xram 0x8000 0x8010",
+            "quit")
+    }
     if (Test-Path -LiteralPath $cmd) {
         Step "sim: ucsim simtest (expect 0x8000 = aa 00 02 04 08 10 20 40)" {
             $wslCmd = "cd $rootWsl && $ucsim -t STC15 -S in=/dev/null,out=- " +

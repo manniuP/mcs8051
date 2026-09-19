@@ -45,7 +45,8 @@
   `add/sub spx,#imm16`、`-OReleaseSmall` 条件融合扩展（`.not`/`.bool_and`/`.bool_or`）、
    **MCS-51 多字节内存读端序修复**（`memByteDisp`）、延伸的 mcs51 自检。
 - [20-纯Zig定时器中断打印](20-纯Zig定时器中断打印.md) —— T0 中断里 UART1 每秒打印一行（ISR 无栈帧约定）。
-- （**19-设备表规范与用法**：待写。）
+- [19-设备表](19-设备表.md) —— 芯片契约（TOML）规范与用法、工具 `mcs_device.py`/`mcs_sfr.py`、
+  与编译器/构建对接、各内核复位入口（含 STC32G 128K 核实）。
 - [21-指令周期参考与bench验证](21-指令周期参考与bench验证.md) —— AI8051U 附录A.1.3 指令周期
   参考表 + `tools/mcs_cycles.py`（逐条/按函数静态周期）+ 真机 `zigbench` 逐周期验证 + 优化收益计算。
 - [22-循环下行计数DJNZ](22-循环下行计数DJNZ.md) —— 构建层 `tools/mcs_loop.py`：把后端生成的

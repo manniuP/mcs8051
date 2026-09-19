@@ -49,6 +49,8 @@
 # 源码目录里只留源文件；.asm 源仅 crt0*.asm 与手工参考（ptrtest_correct/test_dr28）
 # 差分回归中间产物（MCS_KEEP_BASE=1，见 tools/mcs_regress.py）
 *.asm.base
+# 合并编译单元（amalgamation）时 SDCC 在源旁产 .asm
+/examples/ai8051u/usb_hid/src/*.asm
 # 例外：手工编写的参考 asm（非构建产物）
 
 # ptrtest 调试/构建产物（仅 ptrtest.zig 与 main.c 是源）

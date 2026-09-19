@@ -57,10 +57,18 @@ def load_device(path: Path) -> dict:
         base = load_device((path.parent / tpl).resolve())
         ov = doc.get("override") or {}
         code = dict(base.get("code") or {})
+        flash = None
         if ov.get("flash") is not None:
-            code["size"] = int(ov["flash"])
+            flash = int(ov["flash"])
+            # 单段链接不能越过地址空间顶部（如 STC32G128K：base=FF:0000 → 顶部 64K）；
+            # 超出部分（FE:0000 下半 bank）需拆分链接，暂不入 code.size。
+            cbase = int(code.get("base", 0))
+            cwidth = int(code.get("addr_width", 16))
+            room = (1 << cwidth) - cbase
+            code["size"] = min(flash, room)
         base["code"] = code
-        flash = int(code.get("size", 0))
+        if flash is None:
+            flash = int(code.get("size", 0))
         for m in base.get("memory") or []:
             k = m.get("kind")
             if k in ov and ov[k] is not None and ov[k] != "IAP":
@@ -69,8 +77,10 @@ def load_device(path: Path) -> dict:
             for m in base.get("memory") or []:
                 if m.get("kind") == "eeprom":
                     if ov["eeprom"] == "IAP":
-                        m["size"] = flash
-                        m["base"] = int(code.get("base", 0))
+                        mbase = int(code.get("base", 0))
+                        room = (1 << int(code.get("addr_width", 16))) - mbase
+                        m["base"] = mbase
+                        m["size"] = min(flash, room)   # 不越出地址空间顶部
                         m["in_flash"] = True
                     else:
                         m["size"] = int(ov["eeprom"])
@@ -436,7 +446,7 @@ def _self_test() -> int:
         "stc12c5a60s2.toml": (0x0000, "fast8051", 16),
         "stc15w4k32s4.toml": (0x0000, "fast8051", 16),
         "iap15f2k61s2.toml": (0x0000, "fast8051", 16),
-        "stc32g12k128.toml": (0x000000, "mcs251", 24),
+        "stc32g12k128.toml": (0xff0000, "mcs251", 24),
     }
     failed = 0
     for fn, (base, core_note, width) in cases.items():

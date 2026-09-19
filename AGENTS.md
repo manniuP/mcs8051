@@ -1,7 +1,11 @@
 # AGENTS.md — yuyan 工作区
 
 > AI 助手上手须知。**完整约定见 [`docs/AI-协作约定.md`](docs/AI-协作约定.md)**（先读它）。
-> **最近交接（先看）**：[`docs/交接-2026-09-18-QEMU效果与真机调试线索.md`](docs/交接-2026-09-18-QEMU效果与真机调试线索.md)
+> **最近交接（先看）**：[`docs/交接-2026-09-19-SFR可读API与单仓与优化等级.md`](docs/交接-2026-09-19-SFR可读API与单仓与优化等级.md)
+> —— **SFR 可读 API(`dev.reg`/`dev.p`)+R6；示例分平台 + 产物集中 `build/examples/`；文档 24–27；
+> `compiler` 子模块化；`mcs251`↔`mcs8051` **合并单仓**（`origin=manniuP/mcs8051`）；优化等级逐级
+> （O2+ 比较融合）；STC32G 复位入口核实；修 8 位 `export var` 误放 DSEG 的互操作 bug**。
+> 上一份（09-18-QEMU）：[`docs/交接-2026-09-18-QEMU效果与真机调试线索.md`](docs/交接-2026-09-18-QEMU效果与真机调试线索.md)
 > —— **VSCode 扩展装错配置档（工作区绑 `16d3d1de`「51单片机」，须 `--profile`）；QEMU「效果」补全：
 > 串口转发 + 端口 P0–P7（RSP 掩 24 位读不到 SFR，改走 QMP `xp`）；真机调试线索＝Keil Monitor-251
 > （`MON251`@`FF:0000`+`STCMON251.DLL`，专有二进制协议）；新增 UART RSP 调试桩设计草案 + 上游询问草稿**。
@@ -100,7 +104,7 @@
   链接加 `--data-loc 0x30 --idata-loc 0x80`，crt0 空声明 `DSEG`；`.data` 仅 0x00–0x7F、基址 0x30。
 - **放置/优化等级标签（2026-09-17）**：`linksection` 支持**放置** `data`/`idata`/`edata`/`xdata`/`exdata`
   与**优化等级**（与 GCC 对齐）`O0`–`O3`/`Ofast`/`Os`，可空格组合（`lib/mcs251.zig` 导出 `m.data`…`m.Os`）；
-  无标签→编译器自决、等级默认 `O3`。后端按标签选体积/速度并把 `; @tag …` 传中间层（`mcs_ir` 消费）。
+  无标签→编译器自决、等级默认 `O3`；**O2/O3/Ofast 启用「比较+cond_br」融合，O0/O1 不融合，`Os` 走体积（+冷区）**。后端按标签选策略并把 `; @tag …` 传中间层（`mcs_ir` 消费）。
   示例 `examples/ai8051u/zig_opt/`（`xmake build zigopt`，QEMU/真机 `opt 11223344 060a`）。见 `mcs251/docs/17`。
   周期测量示例 `examples/ai8051u/zig_bench/`（Timer0 1T 自由计数，`xmake build zigbench`，
   真机 UART 打印 data/idata/edata/xdata 读延迟与 O0/O5 运行周期 + 空循环基线）。

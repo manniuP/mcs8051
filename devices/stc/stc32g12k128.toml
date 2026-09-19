@@ -1,7 +1,8 @@
 # devices/stc/stc32g12k128.toml
 # STC STC32G12K128 —— 251 兼容核；128K Flash / 12K SRAM（2K edata + 10K xdata）。
 # 定位：与 STC8/STC8051 外设互通，仅内核换成 251（换编译器即可）。
-# TODO：复位入口/向量基址（STC32 是否同 AI8051U 的 FF:0000）与 SRAM 划分待 STC32G 手册 11 核对。
+# 已核（手册 11.1）：复位入口/向量 = FF:0000；128K Flash = FE:0000–FF:FFFF。
+# 本工具链单段链接用顶部 64K；SRAM 划分部分仍待核。
 
 [device]
 id = "stc/stc32g12k128"
@@ -13,12 +14,14 @@ doc = "STC32G-20260709.md"
 sfr_source = "../../tools/vendor/stc/keil/c251/STC32G.H"
 
 [code]
-# TODO：STC32G 复位入口/代码基址待 STC32G 手册 11 核对（128K 无法全放在 FF:0000）。
-base = 0x000000
-size = 0x20000                 # 128K
+# STC32G12K128：Flash 逻辑地址 FE:0000–FF:FFFF（128K），**复位入口/向量在 FF:0000**
+# （STC32G 手册 11.1）。故代码基址 = 0xFF0000。单段链接只覆盖顶部 64K
+# （FF:0000–FF:FFFF，`--code-size 0x10000`）；FE:0000 的下半 64K 需拆分链接（未来）。
+base = 0xff0000
+size = 0x10000                 # 顶部 64K；全 128K 见上方注释
 addr_width = 24
 movc = true
-reset_vector = 0x000000
+reset_vector = 0xff0000
 wait_states = 1
 
 [[memory]]
@@ -56,8 +59,8 @@ enable = "P_SW2.EAXFR"
 
 [[memory]]
 kind = "eeprom"
-base = 0x000000
-size = 0x20000
+base = 0xff0000                 # IAP EEPROM 位于 Flash 内；单段上限用顶部 64K
+size = 0x10000
 page = 512
 in_flash = true
 iap = true
@@ -89,7 +92,7 @@ P_SW2 = 0xBA
 "AUXR.EXTRAM" = 1
 
 [interrupts]
-vector_base = 0x000000         # TODO: 待核
+vector_base = 0xff0000         # 向量在 FF:0000 区（手册 11.1）
 slot_bytes = 8
 formula = "num*8+3"
 max_number = 67
