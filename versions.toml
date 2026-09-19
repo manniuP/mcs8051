@@ -6,7 +6,7 @@ schema = 1
 name = "zig-mcs51-backend"
 url = "https://github.com/manniuP/zig-mcs51-backend"
 branch = "mcs251-backend"
-commit = "bd6913dc4830ef92e8b1fde2dab47b8b99055741"
+commit = "30f0afb096ea9676b95bb904cf879c6118034640"
 upstream = "https://github.com/ziglang/zig"
 upstream_commit = "7056ba9a5c750305726be862a51ff18e2318c138"
 

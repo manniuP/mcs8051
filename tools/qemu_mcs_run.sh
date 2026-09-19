@@ -14,8 +14,8 @@
 #   PORT=6000 tools/qemu_mcs_run.sh          # 换端口
 #
 # 另一终端（或宿主）连：
-#   python3 examples/ai8051u_cmd/host/cmd.py --tcp 127.0.0.1:5555 ping
-#   python3 examples/ai8051u_cmd/host/cmd.py --tcp 127.0.0.1:5555 mul 0x12345678 2
+#   python3 examples/ai8051u/cmd/host/cmd.py --tcp 127.0.0.1:5555 ping
+#   python3 examples/ai8051u/cmd/host/cmd.py --tcp 127.0.0.1:5555 mul 0x12345678 2
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,7 +31,7 @@ for a in "$@"; do
     *) IHX="$a" ;;
   esac
 done
-: "${IHX:=$REPO/examples/ai8051u_cmd/cmd.ihx}"
+: "${IHX:=$REPO/build/examples/ai8051u/cmd/cmd.ihx}"
 
 [ -x "$QEMU" ] || { echo "找不到 QEMU：$QEMU（用 QEMU_MCS 指定）"; exit 1; }
 [ -f "$IHX" ]  || { echo "找不到固件：$IHX"; exit 1; }
@@ -51,7 +51,7 @@ trap 'kill "$QPID" 2>/dev/null || true' EXIT
 sleep 1.5
 
 if [ "$SMOKE" = "1" ]; then
-  CMDPY="$REPO/examples/ai8051u_cmd/host/cmd.py"
+  CMDPY="$REPO/examples/ai8051u/cmd/host/cmd.py"
   # 注意：mul/div 走 AI8051U 的 MDU（DMAIR@0xED），而 QEMU 的 0xED 是 TFPU →
   # 这两条**无法仿真**，只能真机。此处只冒烟可仿真的部分。
   for c in "ping" "led 1" "echo hello"; do
@@ -65,5 +65,5 @@ if [ "$SMOKE" = "1" ]; then
 fi
 
 echo "QEMU 运行中（Ctrl+C 退出）。另一终端："
-echo "  python3 $REPO/examples/ai8051u_cmd/host/cmd.py --tcp 127.0.0.1:$PORT ping"
+echo "  python3 $REPO/examples/ai8051u/cmd/host/cmd.py --tcp 127.0.0.1:$PORT ping"
 wait "$QPID"

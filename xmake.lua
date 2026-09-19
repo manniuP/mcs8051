@@ -73,7 +73,8 @@ target("blink")
     on_build(function(target)
         local arch = get_config("mcs_arch")
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_blink")
+        local scriptdir = path.join(projdir, "examples/ai8051u/blink")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/blink")
         local incdir = path.join(projdir, "lib/include")
         local haldir = path.join(projdir, "lib/stc-hal")
 
@@ -103,11 +104,11 @@ target("blink")
         local main_c   = path.join(scriptdir, "main.c")
         local delay_c  = path.join(haldir, "AI8051U_Delay.c")
         local led_zig  = path.join(scriptdir, "led.zig")
-        local main_rel  = path.join(scriptdir, "main.rel")
-        local delay_rel = path.join(scriptdir, "delay.rel")
-        local led_asm   = path.join(scriptdir, "led.asm")
-        local led_rel   = path.join(scriptdir, "led.rel")
-        local ihx       = path.join(scriptdir, "blink.ihx")
+        local main_rel  = path.join(outdir, "main.rel")
+        local delay_rel = path.join(outdir, "delay.rel")
+        local led_asm   = path.join(outdir, "led.asm")
+        local led_rel   = path.join(outdir, "led.rel")
+        local ihx       = path.join(outdir, "blink.ihx")
 
         local inc_args = {"-I", incdir, "-I", haldir}
 
@@ -122,6 +123,8 @@ target("blink")
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         -- zig 默认全局缓存在 %LOCALAPPDATA%\zig\tmp，沙盒或只读环境不可写；
         -- 重定向到当前项目的 .zig-cache 目录。
         local zig_cache = path.join(projdir, ".zig-cache")
@@ -155,7 +158,8 @@ target("blink")
 
     on_clean(function(target)
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_blink")
+        local scriptdir = path.join(projdir, "examples/ai8051u/blink")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/blink")
         for _, name in ipairs({"main.rel", "main.asm", "main.ihx", "main.lk", "main.lst", "main.sym", "main.rst", "main.mem",
                               "delay.rel", "delay.asm", "delay.ihx", "delay.lk", "delay.lst", "delay.sym", "delay.rst", "delay.mem",
                               "led.rel", "led.asm", "led.ihx", "led.lst", "led.sym", "led.rst",
@@ -185,7 +189,8 @@ target("ptrtest")
             raise("ptrtest 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_ptrtest")
+        local scriptdir = path.join(projdir, "examples/ai8051u/ptrtest")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/ptrtest")
         local incdir = path.join(projdir, "lib/include")
         local uartdir = path.join(projdir, "lib/uart251")
         local haldir = path.join(projdir, "lib/stc-hal")
@@ -204,12 +209,12 @@ target("ptrtest")
         local uart_c   = path.join(uartdir, "uart251.c")
         local delay_c  = path.join(haldir, "AI8051U_Delay.c")
         local zig_src  = path.join(scriptdir, "ptrtest.zig")
-        local main_rel = path.join(scriptdir, "main.rel")
-        local uart_rel = path.join(scriptdir, "uart251.rel")
-        local delay_rel = path.join(scriptdir, "delay.rel")
-        local zig_asm  = path.join(scriptdir, "ptrtest.asm")
-        local zig_rel  = path.join(scriptdir, "ptrtest.rel")
-        local ihx      = path.join(scriptdir, "ptrtest.ihx")
+        local main_rel = path.join(outdir, "main.rel")
+        local uart_rel = path.join(outdir, "uart251.rel")
+        local delay_rel = path.join(outdir, "delay.rel")
+        local zig_asm  = path.join(outdir, "ptrtest.asm")
+        local zig_rel  = path.join(outdir, "ptrtest.rel")
+        local ihx      = path.join(outdir, "ptrtest.ihx")
 
         -- [1/5] C -> .rel
         print("[1/5] C -> rel   : main.c, uart251.c, AI8051U_Delay.c")
@@ -223,6 +228,8 @@ target("ptrtest")
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -247,7 +254,8 @@ target("ptrtest")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_ptrtest")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/ptrtest")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/ptrtest")
         for _, name in ipairs({"main.rel", "main.asm", "main.lst", "main.rst", "main.sym",
                               "ptrtest.asm", "ptrtest.rel", "ptrtest.ihx", "ptrtest.lk",
                               "ptrtest.lst", "ptrtest.map", "ptrtest.mem", "ptrtest.rst", "ptrtest.sym"}) do
@@ -275,7 +283,8 @@ target("simtest")
             raise("simtest 仅支持 mcs51（加 --mcs-arch=mcs51）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/at89c52_sim")
+        local scriptdir = path.join(projdir, "examples/at89c52/sim")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("at89c52/sim")
 
         local sdcc = get_config("sdcc")
         local sdas = path.join(path.directory(sdcc), "sdas8051.exe")
@@ -289,10 +298,10 @@ target("simtest")
 
         local main_c   = path.join(scriptdir, "main.c")
         local zig_src  = path.join(scriptdir, "led.zig")
-        local main_rel = path.join(scriptdir, "main.rel")
-        local zig_asm  = path.join(scriptdir, "led.asm")
-        local zig_rel  = path.join(scriptdir, "led.rel")
-        local ihx      = path.join(scriptdir, "simtest.ihx")
+        local main_rel = path.join(outdir, "main.rel")
+        local zig_asm  = path.join(outdir, "led.asm")
+        local zig_rel  = path.join(outdir, "led.rel")
+        local ihx      = path.join(outdir, "simtest.ihx")
 
         -- [1/4] C -> .rel（--stack-auto：与 Zig 的栈传参约定对齐，支持多参数）
         print("[1/4] C -> rel   : main.c")
@@ -304,6 +313,8 @@ target("simtest")
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -326,7 +337,8 @@ target("simtest")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/at89c52_sim")
+        local scriptdir = path.join(os.projectdir(), "examples/at89c52/sim")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("at89c52/sim")
         for _, name in ipairs({"main.rel", "main.asm", "main.lst", "main.rst", "main.sym",
                               "led.asm", "led.rel", "simtest.ihx", "simtest.lk", "simtest.lst",
                               "simtest.map", "simtest.mem", "simtest.rst", "simtest.sym"}) do
@@ -350,7 +362,8 @@ target("led")
     on_build(function(target)
         local arch = get_config("mcs_arch")
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_led")
+        local scriptdir = path.join(projdir, "examples/ai8051u/led")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/led")
         local incdir = path.join(projdir, "lib/include")
         local haldir = path.join(projdir, "lib/stc-hal")
 
@@ -369,9 +382,9 @@ target("led")
 
         local main_c   = path.join(scriptdir, "main.c")
         local delay_c  = path.join(haldir, "AI8051U_Delay.c")
-        local main_rel = path.join(scriptdir, "main.rel")
-        local delay_rel = path.join(scriptdir, "delay.rel")
-        local ihx      = path.join(scriptdir, "led.ihx")
+        local main_rel = path.join(outdir, "main.rel")
+        local delay_rel = path.join(outdir, "delay.rel")
+        local ihx      = path.join(outdir, "led.ihx")
         local inc_args = {"-I", incdir, "-I", haldir}
 
         -- [1/3] C -> .rel
@@ -395,7 +408,8 @@ target("led")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_led")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/led")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/led")
         for _, name in ipairs({"main.rel", "main.asm", "main.lst", "main.rst", "main.sym",
                               "delay.rel", "delay.lst", "delay.rst", "delay.sym",
                               "led.ihx", "led.lk", "led.map", "led.mem", "led.lst", "led.rst", "led.sym"}) do
@@ -419,7 +433,8 @@ target("uart")
     on_build(function(target)
         local arch = get_config("mcs_arch")
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_uart")
+        local scriptdir = path.join(projdir, "examples/ai8051u/uart")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/uart")
         local incdir = path.join(projdir, "lib/include")
         local haldir = path.join(projdir, "lib/stc-hal")
         local uartdir = path.join(projdir, "lib/uart251")
@@ -440,10 +455,10 @@ target("uart")
         local main_c   = path.join(scriptdir, "main.c")
         local uart_c   = path.join(uartdir, "uart251.c")
         local delay_c  = path.join(haldir, "AI8051U_Delay.c")
-        local main_rel = path.join(scriptdir, "main.rel")
-        local uart_rel = path.join(scriptdir, "uart251.rel")
-        local delay_rel = path.join(scriptdir, "delay.rel")
-        local ihx      = path.join(scriptdir, "uart.ihx")
+        local main_rel = path.join(outdir, "main.rel")
+        local uart_rel = path.join(outdir, "uart251.rel")
+        local delay_rel = path.join(outdir, "delay.rel")
+        local ihx      = path.join(outdir, "uart.ihx")
         local inc_args = {"-I", incdir, "-I", haldir, "-I", uartdir}
 
         -- [1/3] C -> .rel
@@ -468,7 +483,8 @@ target("uart")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_uart")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/uart")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/uart")
         for _, name in ipairs({"main.rel", "main.asm", "main.lst", "main.rst", "main.sym",
                               "uart251.rel", "uart251.lst", "uart251.rst", "uart251.sym",
                               "delay.rel", "delay.lst", "delay.rst", "delay.sym",
@@ -486,7 +502,7 @@ target("uart")
     end)
 
 -- zigled：纯 Zig 点灯（P1.1，约 1Hz），无 C。
--- zig -> sdas251 -> sdcc 链接（配 examples/ai8051u_zig_led/crt0.asm 提供复位入口，
+-- zig -> sdas251 -> sdcc 链接（配 examples/ai8051u/zig_led/crt0.asm 提供复位入口，
 -- --code-loc 0xff0000 = AI8051U 程序存储器起点）。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build zigled
 target("zigled")
@@ -498,7 +514,8 @@ target("zigled")
             raise("zigled 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_led")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_led")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_led")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -511,10 +528,10 @@ target("zigled")
         end
 
         local led_zig  = path.join(scriptdir, "led.zig")
-        local led_asm  = path.join(scriptdir, "led.asm")
-        local led_rel  = path.join(scriptdir, "led.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "led.ihx")
+        local led_asm  = path.join(outdir, "led.asm")
+        local led_rel  = path.join(outdir, "led.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "led.ihx")
 
         -- [1/5] Zig -> .asm
         print("[1/5] Zig -> asm  : led.zig")
@@ -522,12 +539,15 @@ target("zigled")
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. led_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. led_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. led_asm})
 
         -- [2/5] 修局部标签重名（tools/fix_mcs_labels.py）
@@ -543,20 +563,30 @@ target("zigled")
         os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
 
         -- [5/5] sdcc 链接 -> .ihx（--code-loc 0xff0000 = AI8051U 复位入口）
+        -- 调试档（-ODebug，即未开 mcs_small）加 --debug：驱动把 -y 写进 .lk，
+        -- sdld 便生成与 .ihx 同名的 led.cdb。
         print("[5/5] link -> ihx : led.ihx")
-        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
-                        "--data-loc", "0x30", "--idata-loc", "0x80",
-                        crt0_rel, led_rel, "-o", ihx})
+        local link_args = {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                           "--data-loc", "0x30", "--idata-loc", "0x80"}
+        if not get_config("mcs_small") then
+            table.insert(link_args, "--debug")
+        end
+        table.insert(link_args, crt0_rel)
+        table.insert(link_args, led_rel)
+        table.insert(link_args, "-o")
+        table.insert(link_args, ihx)
+        os.vrunv(sdcc, link_args)
 
         target:set("targetfile", ihx)
         print("OK -> " .. ihx)
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_led")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_led")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_led")
         for _, name in ipairs({"led.asm", "led.rel", "led.lst", "led.sym", "led.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
-                              "led.lk", "led.ihx", "led.map", "led.mem"}) do
+                              "led.lk", "led.ihx", "led.map", "led.mem", "led.cdb"}) do
             os.tryrm(path.join(scriptdir, name))
         end
     end)
@@ -581,7 +611,8 @@ target("zigasm")
             raise("zigasm 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_asm")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_asm")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_asm")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -594,10 +625,10 @@ target("zigasm")
         end
 
         local led_zig  = path.join(scriptdir, "led.zig")
-        local led_asm  = path.join(scriptdir, "led.asm")
-        local led_rel  = path.join(scriptdir, "led.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "led.ihx")
+        local led_asm  = path.join(outdir, "led.asm")
+        local led_rel  = path.join(outdir, "led.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "led.ihx")
 
         -- [1/5] Zig -> .asm（sfr.zig 由 led.zig 直接 import，无需单独编译）
         print("[1/5] Zig -> asm  : led.zig")
@@ -605,12 +636,15 @@ target("zigasm")
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. led_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. led_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. led_asm})
 
         -- [2/5] 后处理：修局部标签重名 + 局部瘦身（xmake/helpers.lua）
@@ -636,7 +670,8 @@ target("zigasm")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_asm")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_asm")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_asm")
         for _, name in ipairs({"led.asm", "led.rel", "led.lst", "led.sym", "led.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "led.lk", "led.ihx", "led.map", "led.mem"}) do
@@ -663,7 +698,8 @@ target("zigirq")
             raise("zigirq 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_irq")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_irq")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_irq")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -676,22 +712,25 @@ target("zigirq")
         end
 
         local isr_zig  = path.join(scriptdir, "isr.zig")
-        local isr_asm  = path.join(scriptdir, "isr.asm")
-        local isr_rel  = path.join(scriptdir, "isr.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "irq.ihx")
+        local isr_asm  = path.join(outdir, "isr.asm")
+        local isr_rel  = path.join(outdir, "isr.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "irq.ihx")
 
         print("[1/5] Zig -> asm  : isr.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. isr_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. isr_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. isr_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -713,7 +752,8 @@ target("zigirq")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_irq")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_irq")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_irq")
         for _, name in ipairs({"isr.asm", "isr.rel", "isr.lst", "isr.sym", "isr.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "irq.lk", "irq.ihx", "irq.map", "irq.mem"}) do
@@ -740,7 +780,8 @@ target("zigprint")
             raise("zigprint 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_t0print")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_t0print")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_t0print")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -753,20 +794,23 @@ target("zigprint")
         end
 
         local src_zig  = path.join(scriptdir, "t0print.zig")
-        local src_asm  = path.join(scriptdir, "t0print.asm")
-        local src_rel  = path.join(scriptdir, "t0print.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "t0print.ihx")
+        local src_asm  = path.join(outdir, "t0print.asm")
+        local src_rel  = path.join(outdir, "t0print.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "t0print.ihx")
 
         print("[1/5] Zig -> asm  : t0print.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. src_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -788,7 +832,8 @@ target("zigprint")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_t0print")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_t0print")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_t0print")
         for _, name in ipairs({"t0print.asm", "t0print.rel", "t0print.lst", "t0print.sym", "t0print.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "t0print.lk", "t0print.ihx", "t0print.map", "t0print.mem"}) do
@@ -815,7 +860,8 @@ target("ziguart")
             raise("ziguart 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_uart_echo")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_uart_echo")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_uart_echo")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -828,20 +874,23 @@ target("ziguart")
         end
 
         local src_zig  = path.join(scriptdir, "uart_echo.zig")
-        local src_asm  = path.join(scriptdir, "uart_echo.asm")
-        local src_rel  = path.join(scriptdir, "uart_echo.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "uart_echo.ihx")
+        local src_asm  = path.join(outdir, "uart_echo.asm")
+        local src_rel  = path.join(outdir, "uart_echo.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "uart_echo.ihx")
 
         print("[1/5] Zig -> asm  : uart_echo.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. src_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -863,7 +912,8 @@ target("ziguart")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_uart_echo")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_uart_echo")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_uart_echo")
         for _, name in ipairs({"uart_echo.asm", "uart_echo.rel", "uart_echo.lst", "uart_echo.sym", "uart_echo.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "uart_echo.lk", "uart_echo.ihx", "uart_echo.map", "uart_echo.mem"}) do
@@ -890,7 +940,8 @@ target("zigirqall")
             raise("zigirqall 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_irq_all")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_irq_all")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_irq_all")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -903,16 +954,18 @@ target("zigirqall")
         end
 
         local src_zig  = path.join(scriptdir, "irqall.zig")
-        local src_asm  = path.join(scriptdir, "irqall.asm")
-        local src_rel  = path.join(scriptdir, "irqall.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "irqall.ihx")
+        local src_asm  = path.join(outdir, "irqall.asm")
+        local src_rel  = path.join(outdir, "irqall.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "irqall.ihx")
 
         print("[1/5] Zig -> asm  : irqall.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
@@ -938,7 +991,8 @@ target("zigirqall")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_irq_all")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_irq_all")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_irq_all")
         for _, name in ipairs({"irqall.asm", "irqall.rel", "irqall.lst", "irqall.sym", "irqall.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "irqall.lk", "irqall.ihx", "irqall.map", "irqall.mem"}) do
@@ -965,7 +1019,8 @@ target("zighotcold")
             raise("zighotcold 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_hotcold")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_hotcold")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_hotcold")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -978,22 +1033,25 @@ target("zighotcold")
         end
 
         local src_zig  = path.join(scriptdir, "hotcold.zig")
-        local src_asm  = path.join(scriptdir, "hotcold.asm")
-        local src_rel  = path.join(scriptdir, "hotcold.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "hotcold.ihx")
+        local src_asm  = path.join(outdir, "hotcold.asm")
+        local src_rel  = path.join(outdir, "hotcold.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "hotcold.ihx")
 
         print("[1/5] Zig -> asm  : hotcold.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. src_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -1015,7 +1073,8 @@ target("zighotcold")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_hotcold")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_hotcold")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_hotcold")
         for _, name in ipairs({"hotcold.asm", "hotcold.rel", "hotcold.lst", "hotcold.sym", "hotcold.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "hotcold.lk", "hotcold.ihx", "hotcold.map", "hotcold.mem"}) do
@@ -1031,6 +1090,167 @@ target("zighotcold")
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
 
+-- zigopt：冷热标签驱动「体积/速度优化 + 内存层级放置」的示例（见 examples/ai8051u/zig_opt）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigopt
+target("zigopt")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigopt 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_opt")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_opt")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool)
+            end
+        end
+
+        local src_zig  = path.join(scriptdir, "opt.zig")
+        local src_asm  = path.join(outdir, "opt.asm")
+        local src_rel  = path.join(outdir, "opt.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "opt.ihx")
+
+        print("[1/5] Zig -> asm  : opt.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
+                       "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
+                       "-femit-bin=" .. src_asm})
+
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, src_asm)
+
+        print("[3/5] asm -> rel : opt.asm")
+        os.vrunv(sdas, {"-plosgffw", src_rel, src_asm})
+
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : opt.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        "--data-loc", "0x30", "--idata-loc", "0x80",
+                        crt0_rel, src_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_opt")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_opt")
+        for _, name in ipairs({"opt.asm", "opt.rel", "opt.lst", "opt.sym", "opt.rst",
+                              "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
+                              "opt.lk", "opt.ihx", "opt.map", "opt.mem"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 zigopt")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- zigbench：读取延迟/运行延迟周期测量（Timer0 1T），UART 打印（见 examples/ai8051u/zig_bench）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigbench
+target("zigbench")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigbench 仅支持 mcs251（加 --mcs-arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_bench")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_bench")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then
+                raise("找不到工具：" .. tool)
+            end
+        end
+
+        local src_zig  = path.join(scriptdir, "bench.zig")
+        local src_asm  = path.join(outdir, "bench.asm")
+        local src_rel  = path.join(outdir, "bench.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "bench.ihx")
+
+        print("[1/5] Zig -> asm  : bench.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
+                       "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
+                       "-femit-bin=" .. src_asm})
+
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, src_asm)
+
+        print("[3/5] asm -> rel : bench.asm")
+        os.vrunv(sdas, {"-plosgffw", src_rel, src_asm})
+
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : bench.ihx")
+        os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                        "--data-loc", "0x30", "--idata-loc", "0x80",
+                        crt0_rel, src_rel, "-o", ihx})
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_bench")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_bench")
+        for _, name in ipairs({"bench.asm", "bench.rel", "bench.lst", "bench.sym", "bench.rst",
+                              "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
+                              "bench.lk", "bench.ihx", "bench.map", "bench.mem"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then
+            raise("还没构建，先 xmake build --mcs-arch=mcs251 zigbench")
+        end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
 -- zigmem：纯 Zig 演示用 linksection 把变量放到 data / idata / xdata 三个空间。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build zigmem
 target("zigmem")
@@ -1042,7 +1262,8 @@ target("zigmem")
             raise("zigmem 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_mem")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_mem")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_mem")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -1055,22 +1276,25 @@ target("zigmem")
         end
 
         local mem_zig  = path.join(scriptdir, "mem.zig")
-        local mem_asm  = path.join(scriptdir, "mem.asm")
-        local mem_rel  = path.join(scriptdir, "mem.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "mem.ihx")
+        local mem_asm  = path.join(outdir, "mem.asm")
+        local mem_rel  = path.join(outdir, "mem.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "mem.ihx")
 
         print("[1/5] Zig -> asm  : mem.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. mem_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. mem_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. mem_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -1092,7 +1316,8 @@ target("zigmem")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_mem")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_mem")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_mem")
         for _, name in ipairs({"mem.asm", "mem.rel", "mem.lst", "mem.sym", "mem.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "mem.lk", "mem.ihx", "mem.map", "mem.mem"}) do
@@ -1119,7 +1344,8 @@ target("zigrtindex")
             raise("zigrtindex 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_rtindex")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_rtindex")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_rtindex")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -1132,22 +1358,25 @@ target("zigrtindex")
         end
 
         local src_zig  = path.join(scriptdir, "rtindex.zig")
-        local src_asm  = path.join(scriptdir, "rtindex.asm")
-        local src_rel  = path.join(scriptdir, "rtindex.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "rtindex.ihx")
+        local src_asm  = path.join(outdir, "rtindex.asm")
+        local src_rel  = path.join(outdir, "rtindex.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "rtindex.ihx")
 
         print("[1/5] Zig -> asm  : rtindex.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. src_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -1169,7 +1398,8 @@ target("zigrtindex")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_rtindex")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_rtindex")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_rtindex")
         for _, name in ipairs({"rtindex.asm", "rtindex.rel", "rtindex.lst", "rtindex.sym", "rtindex.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "rtindex.lk", "rtindex.ihx", "rtindex.map", "rtindex.mem"}) do
@@ -1196,7 +1426,8 @@ target("zigslice")
             raise("zigslice 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_slice")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_slice")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_slice")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -1209,22 +1440,25 @@ target("zigslice")
         end
 
         local src_zig  = path.join(scriptdir, "slice.zig")
-        local src_asm  = path.join(scriptdir, "slice.asm")
-        local src_rel  = path.join(scriptdir, "slice.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "slice.ihx")
+        local src_asm  = path.join(outdir, "slice.asm")
+        local src_rel  = path.join(outdir, "slice.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "slice.ihx")
 
         print("[1/5] Zig -> asm  : slice.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. src_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -1246,7 +1480,8 @@ target("zigslice")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_slice")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_slice")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_slice")
         for _, name in ipairs({"slice.asm", "slice.rel", "slice.lst", "slice.sym", "slice.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "slice.lk", "slice.ihx", "slice.map", "slice.mem"}) do
@@ -1273,7 +1508,8 @@ target("zigrtslice")
             raise("zigrtslice 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_rtslice")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_rtslice")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_rtslice")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -1286,22 +1522,25 @@ target("zigrtslice")
         end
 
         local src_zig  = path.join(scriptdir, "rtslice.zig")
-        local src_asm  = path.join(scriptdir, "rtslice.asm")
-        local src_rel  = path.join(scriptdir, "rtslice.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "rtslice.ihx")
+        local src_asm  = path.join(outdir, "rtslice.asm")
+        local src_rel  = path.join(outdir, "rtslice.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "rtslice.ihx")
 
         print("[1/5] Zig -> asm  : rtslice.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. src_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -1323,7 +1562,8 @@ target("zigrtslice")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_rtslice")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_rtslice")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_rtslice")
         for _, name in ipairs({"rtslice.asm", "rtslice.rel", "rtslice.lst", "rtslice.sym", "rtslice.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "rtslice.lk", "rtslice.ihx", "rtslice.map", "rtslice.mem"}) do
@@ -1350,7 +1590,8 @@ target("zigns")
             raise("zigns 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_ns")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_ns")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_ns")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -1363,22 +1604,25 @@ target("zigns")
         end
 
         local src_zig  = path.join(scriptdir, "ns.zig")
-        local src_asm  = path.join(scriptdir, "ns.asm")
-        local src_rel  = path.join(scriptdir, "ns.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "ns.ihx")
+        local src_asm  = path.join(outdir, "ns.asm")
+        local src_rel  = path.join(outdir, "ns.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "ns.ihx")
 
         print("[1/5] Zig -> asm  : ns.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. src_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -1400,7 +1644,8 @@ target("zigns")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_ns")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_ns")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_ns")
         for _, name in ipairs({"ns.asm", "ns.rel", "ns.lst", "ns.sym", "ns.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "ns.lk", "ns.ihx", "ns.map", "ns.mem"}) do
@@ -1427,7 +1672,8 @@ target("zigbuzz")
             raise("zigbuzz 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_buzz")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_buzz")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_buzz")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -1440,22 +1686,25 @@ target("zigbuzz")
         end
 
         local src_zig  = path.join(scriptdir, "buzzer.zig")
-        local src_asm  = path.join(scriptdir, "buzzer.asm")
-        local src_rel  = path.join(scriptdir, "buzzer.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "buzz.ihx")
+        local src_asm  = path.join(outdir, "buzzer.asm")
+        local src_rel  = path.join(outdir, "buzzer.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "buzz.ihx")
 
         print("[1/5] Zig -> asm  : buzzer.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-femit-bin=" .. src_asm})
 
         local helpers = import("xmake.helpers", {rootdir = projdir})
@@ -1477,7 +1726,8 @@ target("zigbuzz")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_buzz")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_buzz")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_buzz")
         for _, name in ipairs({"buzzer.asm", "buzzer.rel", "buzzer.lst", "buzzer.sym", "buzzer.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "buzz.lk", "buzz.ihx", "buzz.map", "buzz.mem"}) do
@@ -1493,7 +1743,7 @@ target("zigbuzz")
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
 
--- ziglog：轻量二进制日志（defmt 风格）演示。主机端用 examples/ai8051u_zig_log/decode.py 解码。
+-- ziglog：轻量二进制日志（defmt 风格）演示。主机端用 examples/ai8051u/zig_log/decode.py 解码。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build ziglog
 target("ziglog")
     set_kind("phony")
@@ -1504,7 +1754,8 @@ target("ziglog")
             raise("ziglog 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_zig_log")
+        local scriptdir = path.join(projdir, "examples/ai8051u/zig_log")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_log")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -1517,22 +1768,25 @@ target("ziglog")
         end
 
         local src_zig  = path.join(scriptdir, "log.zig")
-        local src_asm  = path.join(scriptdir, "log.asm")
-        local src_rel  = path.join(scriptdir, "log.rel")
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
-        local ihx      = path.join(scriptdir, "log.ihx")
+        local src_asm  = path.join(outdir, "log.asm")
+        local src_rel  = path.join(outdir, "log.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "log.ihx")
 
         print("[1/5] Zig -> asm  : log.zig")
         os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
         -- 设备驱动放置：把设备内存模型喂给后端（MCS_DEVICE=JSON 文本）。
         -- 见 compiler/src/codegen/mcs/device.zig 与 devices/README.md §5.3。
         os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        -- 同时刷新 build/devices/device_sfr.zig（Zig 示例 `@import("dev")` 用）
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
         local zig_cache = path.join(projdir, ".zig-cache")
         if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
-                       "--dep", "mcs", "--dep", "cobs", "-Mroot=" .. src_zig,
+                       "--dep", "mcs", "--dep", "dev", "--dep", "cobs", "-Mroot=" .. src_zig,
                        "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
                        "-Mcobs=" .. path.join(projdir, "lib/cobs/cobs.zig"),
                        "-femit-bin=" .. src_asm})
 
@@ -1555,7 +1809,8 @@ target("ziglog")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_zig_log")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/zig_log")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/zig_log")
         for _, name in ipairs({"log.asm", "log.rel", "log.lst", "log.sym", "log.rst",
                               "crt0.rel", "crt0.lst", "crt0.sym", "crt0.rst",
                               "log.lk", "log.ihx", "log.map", "log.mem"}) do
@@ -1583,7 +1838,8 @@ target("ccobs")
             raise("ccobs 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_c_cobs")
+        local scriptdir = path.join(projdir, "examples/ai8051u/c_cobs")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/c_cobs")
         local incdir = path.join(projdir, "lib/include")
         local haldir = path.join(projdir, "lib/stc-hal")
         local uartdir = path.join(projdir, "lib/uart251")
@@ -1598,11 +1854,11 @@ target("ccobs")
         local cobs_c    = path.join(cobsdir, "cobs.c")
         local uart_c    = path.join(uartdir, "uart251.c")
         local delay_c   = path.join(haldir, "AI8051U_Delay.c")
-        local main_rel  = path.join(scriptdir, "main.rel")
-        local cobs_rel  = path.join(scriptdir, "cobs.rel")
-        local uart_rel  = path.join(scriptdir, "uart251.rel")
-        local delay_rel = path.join(scriptdir, "delay.rel")
-        local ihx       = path.join(scriptdir, "ccobs.ihx")
+        local main_rel  = path.join(outdir, "main.rel")
+        local cobs_rel  = path.join(outdir, "cobs.rel")
+        local uart_rel  = path.join(outdir, "uart251.rel")
+        local delay_rel = path.join(outdir, "delay.rel")
+        local ihx       = path.join(outdir, "ccobs.ihx")
         local cflags    = {"-mmcs251", "--model-large", "-DUART_BAUD=115200UL",
                            "-I", incdir, "-I", haldir, "-I", uartdir, "-I", cobsdir}
 
@@ -1621,7 +1877,8 @@ target("ccobs")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_c_cobs")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/c_cobs")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/c_cobs")
         for _, name in ipairs({"main.rel", "cobs.rel", "uart251.rel", "delay.rel",
                               "ccobs.ihx", "ccobs.lk", "ccobs.map", "ccobs.mem",
                               "ccobs.lst", "ccobs.rst", "ccobs.sym"}) do
@@ -1638,7 +1895,7 @@ target("ccobs")
     end)
 
 -- cmd：P0「UART 下发指令」——主机经 UART1 下发 COBS 命令帧，MCU 解析执行并回包。
--- lib/cobs 帧格式 + lib/uart251（TX 阻塞 + RX 中断环缓）；主机端 examples/ai8051u_cmd/host/cmd.py。
+-- lib/cobs 帧格式 + lib/uart251（TX 阻塞 + RX 中断环缓）；主机端 examples/ai8051u/cmd/host/cmd.py。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build cmd
 target("cmd")
     set_kind("phony")
@@ -1649,7 +1906,8 @@ target("cmd")
             raise("cmd 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_cmd")
+        local scriptdir = path.join(projdir, "examples/ai8051u/cmd")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/cmd")
         local incdir = path.join(projdir, "lib/include")
         local haldir = path.join(projdir, "lib/stc-hal")
         local uartdir = path.join(projdir, "lib/uart251")
@@ -1667,12 +1925,12 @@ target("cmd")
         local uart_c    = path.join(uartdir, "uart251.c")
         local cordic_c  = path.join(cordicdir, "cordic.c")
         local mdu_c     = path.join(mdudir, "mdu.c")
-        local main_rel  = path.join(scriptdir, "main.rel")
-        local cobs_rel  = path.join(scriptdir, "cobs.rel")
-        local uart_rel  = path.join(scriptdir, "uart251.rel")
-        local cordic_rel = path.join(scriptdir, "cordic.rel")
-        local mdu_rel   = path.join(scriptdir, "mdu.rel")
-        local ihx       = path.join(scriptdir, "cmd.ihx")
+        local main_rel  = path.join(outdir, "main.rel")
+        local cobs_rel  = path.join(outdir, "cobs.rel")
+        local uart_rel  = path.join(outdir, "uart251.rel")
+        local cordic_rel = path.join(outdir, "cordic.rel")
+        local mdu_rel   = path.join(outdir, "mdu.rel")
+        local ihx       = path.join(outdir, "cmd.ihx")
         local cflags    = {"-mmcs251", "--model-large", "-DUART_BAUD=115200UL",
                            "-I", incdir, "-I", haldir, "-I", uartdir, "-I", cobsdir,
                            "-I", cordicdir, "-I", mdudir}
@@ -1691,12 +1949,12 @@ target("cmd")
             path.join(path.directory(sdcc), "sdas251.exe"),
             get_config("python"),
             {
-                {asm = path.join(scriptdir, "cobs.asm"),    rel = cobs_rel},
-                {asm = path.join(scriptdir, "cordic.asm"),  rel = cordic_rel},
-                {asm = path.join(scriptdir, "mdu.asm"),     rel = mdu_rel},
-                {asm = path.join(scriptdir, "uart251.asm"), rel = uart_rel},
+                {asm = path.join(outdir, "cobs.asm"),    rel = cobs_rel},
+                {asm = path.join(outdir, "cordic.asm"),  rel = cordic_rel},
+                {asm = path.join(outdir, "mdu.asm"),     rel = mdu_rel},
+                {asm = path.join(outdir, "uart251.asm"), rel = uart_rel},
             },
-            {path.join(scriptdir, "main.asm")})
+            {path.join(outdir, "main.asm")})
 
         print("[3/3] link -> ihx: cmd.ihx")
         os.vrunv(sdcc, {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
@@ -1707,7 +1965,8 @@ target("cmd")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_cmd")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/cmd")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/cmd")
         for _, name in ipairs({"main.rel", "cobs.rel", "uart251.rel", "cordic.rel", "mdu.rel",
                               "main.lst", "main.rst", "main.sym", "cobs.lst", "cobs.rst", "cobs.sym",
                               "cordic.lst", "cordic.rst", "cordic.sym", "mdu.lst", "mdu.rst", "mdu.sym",
@@ -1726,7 +1985,7 @@ target("cmd")
     end)
 
 -- usbcdc：把 STC 官方 USB-CDC（Keil C251）源码经 keil2sdcc 移植后，用 SDCC mcs251 编译链接。
--- 源码在 examples/ai8051u_usb_cdc/src/（已翻译），USB SFR 来自 lib/include/ai8051u_sfr.h。
+-- 源码在 examples/ai8051u/usb_cdc/（已翻译），USB SFR 来自 lib/include/ai8051u_sfr.h。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build usbcdc
 target("usbcdc")
     set_kind("phony")
@@ -1737,7 +1996,8 @@ target("usbcdc")
             raise("usbcdc 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_usb_cdc")
+        local scriptdir = path.join(projdir, "examples/ai8051u/usb_cdc")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/usb_cdc")
         local srcdir = path.join(scriptdir, "src")
         local incdir = path.join(projdir, "lib/include")
         local sdcc = get_config("sdcc251")
@@ -1753,13 +2013,13 @@ target("usbcdc")
 
         for _, s in ipairs(srcs) do
             local c = path.join(srcdir, s .. ".c")
-            local r = path.join(srcdir, s .. ".rel")
+            local r = path.join(outdir, s .. ".rel")
             print("[1/2] C -> rel   : " .. (s .. ".c"))
             os.vrunv(sdcc, table.join(cflags, {"-c", c, "-o", r}))
             table.insert(rels, r)
         end
 
-        local ihx = path.join(scriptdir, "usb_cdc.ihx")
+        local ihx = path.join(outdir, "usb_cdc.ihx")
         print("[2/2] link -> ihx: usb_cdc.ihx")
         os.vrunv(sdcc, table.join({"-mmcs251", "--model-large",
                                    "--code-loc", "0xff0000"}, rels, {"-o", ihx}))
@@ -1769,20 +2029,21 @@ target("usbcdc")
     end)
 
     on_clean(function(target)
-        local srcdir = path.join(os.projectdir(), "examples/ai8051u_usb_cdc/src")
+        local srcdir = path.join(os.projectdir(), "examples/ai8051u/usb_cdc/src")
         for _, s in ipairs({"main", "uart", "usb", "usb_desc", "usb_req_std",
                             "usb_req_class", "usb_req_vendor", "util"}) do
-            os.tryrm(path.join(srcdir, s .. ".rel"))
-            os.tryrm(path.join(srcdir, s .. ".lst"))
-            os.tryrm(path.join(srcdir, s .. ".rst"))
-            os.tryrm(path.join(srcdir, s .. ".sym"))
-            os.tryrm(path.join(srcdir, s .. ".asm"))
+            os.tryrm(path.join(outdir, s .. ".rel"))
+            os.tryrm(path.join(outdir, s .. ".lst"))
+            os.tryrm(path.join(outdir, s .. ".rst"))
+            os.tryrm(path.join(outdir, s .. ".sym"))
+            os.tryrm(path.join(outdir, s .. ".asm"))
         end
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_usb_cdc")
-        os.tryrm(path.join(scriptdir, "usb_cdc.ihx"))
-        os.tryrm(path.join(scriptdir, "usb_cdc.lk"))
-        os.tryrm(path.join(scriptdir, "usb_cdc.map"))
-        os.tryrm(path.join(scriptdir, "usb_cdc.mem"))
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/usb_cdc")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/usb_cdc")
+        os.tryrm(path.join(outdir, "usb_cdc.ihx"))
+        os.tryrm(path.join(outdir, "usb_cdc.lk"))
+        os.tryrm(path.join(outdir, "usb_cdc.map"))
+        os.tryrm(path.join(outdir, "usb_cdc.mem"))
     end)
 
     on_run(function(target)
@@ -1805,7 +2066,8 @@ target("usbhid")
             raise("usbhid 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_usb_hid")
+        local scriptdir = path.join(projdir, "examples/ai8051u/usb_hid")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/usb_hid")
         local srcdir = path.join(scriptdir, "src")
         local incdir = path.join(projdir, "lib/include")
         local sdcc = get_config("sdcc251")
@@ -1816,7 +2078,7 @@ target("usbhid")
         -- 单编译单元（main + 全部 ISR），SDCC 才会生成完整 IVT；见 docs/14
         local c   = path.join(srcdir, "usb_hid_all.c")
         local rel = path.join(srcdir, "usb_hid_all.rel")
-        local ihx = path.join(scriptdir, "usb_hid.ihx")
+        local ihx = path.join(outdir, "usb_hid.ihx")
 
         print("[1/2] C -> rel   : usb_hid_all.c")
         os.vrunv(sdcc, {"-mmcs251", "--model-large", "-I", incdir, "-I", srcdir,
@@ -1831,13 +2093,14 @@ target("usbhid")
     end)
 
     on_clean(function(target)
-        local srcdir = path.join(os.projectdir(), "examples/ai8051u_usb_hid/src")
+        local srcdir = path.join(os.projectdir(), "examples/ai8051u/usb_hid/src")
         for _, s in ipairs({"usb_hid_all"}) do
             for _, ext in ipairs({".rel", ".lst", ".rst", ".sym", ".asm"}) do
                 os.tryrm(path.join(srcdir, s .. ext))
             end
         end
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_usb_hid")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/usb_hid")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/usb_hid")
         for _, n in ipairs({"usb_hid.ihx", "usb_hid.lk", "usb_hid.map", "usb_hid.mem"}) do
             os.tryrm(path.join(scriptdir, n))
         end
@@ -1853,7 +2116,7 @@ target("usbhid")
 
 -- usbcdcobs：COBS 日志帧走 USB-CDC 输出（摆脱 UART 线）。
 -- 单编译单元 usb_cdc_cobs_all.c（含 main + 全部 ISR，复用 usb_cdc 驱动源码）+ lib/cobs/cobs.c。
--- 主机用 examples/ai8051u_zig_log/decode.ps1 -Port <CDC口> 解码（帧格式同 ziglog/ccobs）。
+-- 主机用 examples/ai8051u/zig_log/decode.ps1 -Port <CDC口> 解码（帧格式同 ziglog/ccobs）。
 -- 状态：编译/链接已验证；**真机待验证**（见 docs/交接 §11）。
 -- 用法：xmake f --mcs_arch=mcs251; xmake build usbcdcobs
 target("usbcdcobs")
@@ -1865,8 +2128,9 @@ target("usbcdcobs")
             raise("usbcdcobs 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_usb_cdc_cobs")
-        local usbsrc = path.join(projdir, "examples/ai8051u_usb_cdc/src")
+        local scriptdir = path.join(projdir, "examples/ai8051u/usb_cdc_cobs")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/usb_cdc_cobs")
+        local usbsrc = path.join(projdir, "examples/ai8051u/usb_cdc/src")
         local incdir = path.join(projdir, "lib/include")
         local cobsdir = path.join(projdir, "lib/cobs")
         local sdcc = get_config("sdcc251")
@@ -1875,10 +2139,10 @@ target("usbcdcobs")
         end
 
         local all_c    = path.join(scriptdir, "usb_cdc_cobs_all.c")
-        local all_rel  = path.join(scriptdir, "usb_cdc_cobs_all.rel")
+        local all_rel  = path.join(outdir, "usb_cdc_cobs_all.rel")
         local cobs_c   = path.join(cobsdir, "cobs.c")
-        local cobs_rel = path.join(scriptdir, "cobs.rel")
-        local ihx      = path.join(scriptdir, "usb_cdc_cobs.ihx")
+        local cobs_rel = path.join(outdir, "cobs.rel")
+        local ihx      = path.join(outdir, "usb_cdc_cobs.ihx")
         local cflags   = {"-mmcs251", "--model-large",
                           "-I", incdir, "-I", usbsrc, "-I", cobsdir}
 
@@ -1895,7 +2159,8 @@ target("usbcdcobs")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_usb_cdc_cobs")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/usb_cdc_cobs")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/usb_cdc_cobs")
         for _, n in ipairs({"usb_cdc_cobs_all.rel", "usb_cdc_cobs_all.lst", "usb_cdc_cobs_all.rst",
                             "usb_cdc_cobs_all.sym", "usb_cdc_cobs_all.asm", "cobs.rel",
                             "usb_cdc_cobs.ihx", "usb_cdc_cobs.lk", "usb_cdc_cobs.map", "usb_cdc_cobs.mem"}) do
@@ -1924,7 +2189,8 @@ target("ccobs51")
             raise("ccobs51 仅支持 mcs51（加 --mcs-arch=mcs51）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/mcs51_c_cobs")
+        local scriptdir = path.join(projdir, "examples/at89c52/c_cobs")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("at89c52/c_cobs")
         local cobsdir = path.join(projdir, "lib/cobs")
         local sdcc = get_config("sdcc")
         if not os.isfile(sdcc) then
@@ -1932,10 +2198,10 @@ target("ccobs51")
         end
 
         local main_c   = path.join(scriptdir, "main.c")
-        local main_rel = path.join(scriptdir, "main.rel")
+        local main_rel = path.join(outdir, "main.rel")
         local cobs_c   = path.join(cobsdir, "cobs.c")
-        local cobs_rel = path.join(scriptdir, "cobs.rel")
-        local ihx      = path.join(scriptdir, "ccobs51.ihx")
+        local cobs_rel = path.join(outdir, "cobs.rel")
+        local ihx      = path.join(outdir, "ccobs51.ihx")
         local cflags   = {"-mmcs51", "--model-large", "--stack-auto", "-I", cobsdir}
 
         print("[1/3] C -> rel   : main.c")
@@ -1951,7 +2217,8 @@ target("ccobs51")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/mcs51_c_cobs")
+        local scriptdir = path.join(os.projectdir(), "examples/at89c52/c_cobs")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("at89c52/c_cobs")
         for _, n in ipairs({"main.rel", "main.lst", "main.rst", "main.sym", "main.asm",
                             "cobs.rel", "cobs.lst", "cobs.rst", "cobs.sym", "cobs.asm",
                             "ccobs51.ihx", "ccobs51.lk", "ccobs51.map", "ccobs51.mem"}) do
@@ -1979,7 +2246,8 @@ target("mdu")
             raise("mdu 仅支持 mcs251（加 --mcs-arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_mdu")
+        local scriptdir = path.join(projdir, "examples/ai8051u/mdu")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/mdu")
         local incdir = path.join(projdir, "lib/include")
         local haldir = path.join(projdir, "lib/stc-hal")
         local uartdir = path.join(projdir, "lib/uart251")
@@ -1993,11 +2261,11 @@ target("mdu")
         local mdu_c    = path.join(mdudir, "mdu.c")
         local uart_c   = path.join(uartdir, "uart251.c")
         local delay_c  = path.join(haldir, "AI8051U_Delay.c")
-        local main_rel = path.join(scriptdir, "main.rel")
-        local mdu_rel  = path.join(scriptdir, "mdu.rel")
-        local uart_rel = path.join(scriptdir, "uart251.rel")
-        local delay_rel = path.join(scriptdir, "delay.rel")
-        local ihx      = path.join(scriptdir, "mdu.ihx")
+        local main_rel = path.join(outdir, "main.rel")
+        local mdu_rel  = path.join(outdir, "mdu.rel")
+        local uart_rel = path.join(outdir, "uart251.rel")
+        local delay_rel = path.join(outdir, "delay.rel")
+        local ihx      = path.join(outdir, "mdu.ihx")
         local cflags   = {"-mmcs251", "--model-large", "-DUART_BAUD=115200",
                           "-I", incdir, "-I", haldir, "-I", uartdir, "-I", mdudir}
 
@@ -2016,7 +2284,8 @@ target("mdu")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_mdu")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/mdu")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/mdu")
         for _, n in ipairs({"main.rel", "mdu.rel", "uart251.rel", "delay.rel", "main.asm", "mdu.asm",
                             "mdu.ihx", "mdu.lk", "mdu.map", "mdu.mem", "mdu.lst", "mdu.rst", "mdu.sym"}) do
             os.tryrm(path.join(scriptdir, n))
@@ -2028,6 +2297,229 @@ target("mdu")
         if not ihx or not os.isfile(ihx) then
             raise("还没构建，先 xmake build --mcs-arch=mcs251 mdu")
         end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- zigsfrbits：SFR **位指令**风格点灯（dev.sfr + mcs 宏：anl/orl/setb/clr）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigsfrbits
+target("zigsfrbits")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigsfrbits 仅支持 mcs251（加 --mcs_arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u/sfr_bits")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/sfr_bits")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then raise("找不到工具：" .. tool) end
+        end
+        local led_zig  = path.join(scriptdir, "led.zig")
+        local led_asm  = path.join(outdir, "led.asm")
+        local led_rel  = path.join(outdir, "led.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "led.ihx")
+
+        print("[1/5] Zig -> asm  : led.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
+                       "--dep", "mcs", "--dep", "dev", "-Mroot=" .. led_zig,
+                       "-Mmcs=" .. path.join(projdir, "lib/mcs251.zig"),
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
+                       "-femit-bin=" .. led_asm})
+
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, led_asm)
+
+        print("[3/5] asm -> rel : led.asm")
+        os.vrunv(sdas, {"-plosgffw", led_rel, led_asm})
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : led.ihx")
+        local link_args = {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                           "--data-loc", "0x30", "--idata-loc", "0x80"}
+        if not get_config("mcs_small") then table.insert(link_args, "--debug") end
+        table.insert(link_args, crt0_rel)
+        table.insert(link_args, led_rel)
+        table.insert(link_args, "-o")
+        table.insert(link_args, ihx)
+        os.vrunv(sdcc, link_args)
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/sfr_bits")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/sfr_bits")
+        for _, name in ipairs({"led.asm", "led.rel", "crt0.rel", "led.lk", "led.ihx", "led.map", "led.mem", "led.cdb"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then raise("还没构建，先 xmake build --mcs_arch=mcs251 zigsfrbits") end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- zigsfrreg：SFR **寄存器对象（新格式）** 点灯（dev.reg.*）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigsfrreg
+target("zigsfrreg")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigsfrreg 仅支持 mcs251（加 --mcs_arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u/sfr_reg")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/sfr_reg")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then raise("找不到工具：" .. tool) end
+        end
+        local led_zig  = path.join(scriptdir, "led.zig")
+        local led_asm  = path.join(outdir, "led.asm")
+        local led_rel  = path.join(outdir, "led.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "led.ihx")
+
+        print("[1/5] Zig -> asm  : led.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
+                       "--dep", "dev", "-Mroot=" .. led_zig,
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
+                       "-femit-bin=" .. led_asm})
+
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, led_asm)
+
+        print("[3/5] asm -> rel : led.asm")
+        os.vrunv(sdas, {"-plosgffw", led_rel, led_asm})
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : led.ihx")
+        local link_args = {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                           "--data-loc", "0x30", "--idata-loc", "0x80"}
+        if not get_config("mcs_small") then table.insert(link_args, "--debug") end
+        table.insert(link_args, crt0_rel)
+        table.insert(link_args, led_rel)
+        table.insert(link_args, "-o")
+        table.insert(link_args, ihx)
+        os.vrunv(sdcc, link_args)
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/sfr_reg")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/sfr_reg")
+        for _, name in ipairs({"led.asm", "led.rel", "crt0.rel", "led.lk", "led.ihx", "led.map", "led.mem", "led.cdb"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then raise("还没构建，先 xmake build --mcs_arch=mcs251 zigsfrreg") end
+        print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
+    end)
+
+-- zigsfrptr：SFR **C 风格固定地址指针**点灯（dev.p.*，配 mcs_opt R6 融为单条 anl/orl）。
+-- 用法：xmake f --mcs_arch=mcs251; xmake build zigsfrptr
+target("zigsfrptr")
+    set_kind("phony")
+
+    on_build(function(target)
+        local arch = get_config("mcs_arch")
+        if arch ~= "mcs251" then
+            raise("zigsfrptr 仅支持 mcs251（加 --mcs_arch=mcs251）")
+        end
+        local projdir = os.projectdir()
+        local scriptdir = path.join(projdir, "examples/ai8051u/sfr_ptr")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/sfr_ptr")
+        local sdcc = get_config("sdcc251")
+        local sdas = path.join(path.directory(sdcc), "sdas251.exe")
+        local zig = get_config("zig")
+        local crt0 = path.join(scriptdir, "crt0.asm")
+        for _, tool in ipairs({sdcc, sdas, zig}) do
+            if not os.isfile(tool) then raise("找不到工具：" .. tool) end
+        end
+        local led_zig  = path.join(scriptdir, "led.zig")
+        local led_asm  = path.join(outdir, "led.asm")
+        local led_rel  = path.join(outdir, "led.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
+        local ihx      = path.join(outdir, "led.ihx")
+
+        print("[1/5] Zig -> asm  : led.zig")
+        os.setenv("ZIG_LIB_DIR", path.join(projdir, "compiler/lib"))
+        os.setenv("MCS_DEVICE", (os.iorunv(get_config("python"), {path.join(projdir, "tools/mcs_device.py"), path.join(projdir, get_config("device")), "--emit", "compiler-json"}):gsub("%s+$", "")))
+        import("xmake.helpers", {rootdir = projdir}).ensure_device_sfr_zig(projdir, path.join(projdir, get_config("device")))
+        local zig_cache = path.join(projdir, ".zig-cache")
+        if not os.isdir(zig_cache) then os.mkdir(zig_cache) end
+        os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
+        os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"), "-target", "mcs251-freestanding",
+                       "--dep", "dev", "-Mroot=" .. led_zig,
+                       "-Mdev=" .. path.join(projdir, "build/devices/device_sfr.zig"),
+                       "-femit-bin=" .. led_asm})
+
+        local helpers = import("xmake.helpers", {rootdir = projdir})
+        helpers.postprocess_asm(projdir, led_asm)
+
+        print("[3/5] asm -> rel : led.asm")
+        os.vrunv(sdas, {"-plosgffw", led_rel, led_asm})
+        print("[4/5] crt0 -> rel: crt0.asm")
+        os.vrunv(sdas, {"-plosgffw", crt0_rel, crt0})
+
+        print("[5/5] link -> ihx : led.ihx")
+        local link_args = {"-mmcs251", "--model-large", "--code-loc", "0xff0000",
+                           "--data-loc", "0x30", "--idata-loc", "0x80"}
+        if not get_config("mcs_small") then table.insert(link_args, "--debug") end
+        table.insert(link_args, crt0_rel)
+        table.insert(link_args, led_rel)
+        table.insert(link_args, "-o")
+        table.insert(link_args, ihx)
+        os.vrunv(sdcc, link_args)
+
+        target:set("targetfile", ihx)
+        print("OK -> " .. ihx)
+    end)
+
+    on_clean(function(target)
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/sfr_ptr")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/sfr_ptr")
+        for _, name in ipairs({"led.asm", "led.rel", "crt0.rel", "led.lk", "led.ihx", "led.map", "led.mem", "led.cdb"}) do
+            os.tryrm(path.join(scriptdir, name))
+        end
+    end)
+
+    on_run(function(target)
+        local ihx = target:get("targetfile")
+        if not ihx or not os.isfile(ihx) then raise("还没构建，先 xmake build --mcs_arch=mcs251 zigsfrptr") end
         print("产物：" .. ihx .. "（" .. os.filesize(ihx) .. " 字节）")
     end)
 

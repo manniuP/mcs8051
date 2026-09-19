@@ -30,13 +30,36 @@ function Step([string]$name, [scriptblock]$body) {
 }
 
 # ---- 1) mcs251 targets ----
-Step "xmake configure (mcs251)" { xmake f --mcs_arch=mcs251 }
+# 用 -OReleaseSmall：mcs_regress 的指令预算（BUDGETS）按此实测基线 + 余量。
+Step "xmake configure (mcs251)" { xmake f --mcs_arch=mcs251 --mcs_small=true }
+# MCS_KEEP_BASE=1: also emit the pre-mcs_ir asm (base=fix+mcs_opt) as <x>.asm.base,
+# used by the differential regression below. Reset before the mcs51 section.
+$env:MCS_KEEP_BASE = "1"
 $targets = @("ziglog","zigled","zigasm","zigirq","zigirqall","zigprint","ziguart","zigmem","zighotcold","zigrtindex","zigslice","zigrtslice","zigns","zigbuzz","ptrtest","uart","ccobs")
 if (-not $SkipUsb) { $targets += @("usbcdc","usbhid","usbcdcobs") }
 foreach ($t in $targets) { Step ("build " + $t) { xmake build $t } }
 
+# ---- 1b) optimization regression (assertion budgets + E2 base/opt diff) ----
+Step "regress: mcs_ir self-test" { python tools\mcs_ir.py --self-test }
+Step "regress: mcs_opt self-test" { python tools\mcs_opt.py --self-test }
+Step "regress: mcs_loop self-test" { python tools\mcs_loop.py --self-test }
+Step "regress: mcs_regress self-test" { python tools\mcs_regress.py --self-test }
+Step "regress: E2 base vs opt + budgets" {
+    python tools\mcs_regress.py --auto `
+        build\examples\ai8051u\zig_opt\opt.asm `
+        build\examples\ai8051u\zig_ns\ns.asm `
+        build\examples\ai8051u\zig_mem\mem.asm `
+        build\examples\ai8051u\zig_slice\slice.asm `
+        build\examples\ai8051u\zig_log\log.asm `
+        build\examples\ai8051u\zig_buzz\buzzer.asm `
+        build\examples\ai8051u\zig_rtindex\rtindex.asm `
+        build\examples\ai8051u\zig_hotcold\hotcold.asm `
+        --require-reduction
+}
+$env:MCS_KEEP_BASE = "0"
+
 # ---- 2) mcs51 ----
-Step "xmake configure (mcs51)" { xmake f --mcs_arch=mcs51 }
+Step "xmake configure (mcs51)" { xmake f --mcs_arch=mcs51 --mcs_small=false }
 Step "build simtest" { xmake build simtest }
 Step "build ccobs51" { xmake build ccobs51 }
 Step "xmake configure (mcs251, restore)" { xmake f --mcs_arch=mcs251 }
@@ -60,13 +83,14 @@ if (-not $SkipSim) {
     if (Test-Path -LiteralPath $cmd) {
         Step "sim: ucsim simtest (expect 0x8000 = aa 00 02 04 08 10 20 40)" {
             $wslCmd = "cd $rootWsl && $ucsim -t STC15 -S in=/dev/null,out=- " +
-                      "examples/at89c52_sim/simtest.ihx < $cmdWsl " +
+                      "build/examples/at89c52/sim/simtest.ihx < $cmdWsl " +
                       "| grep -q 'aa 00 02 04 08 10 20 40'"
             wsl -e bash -lc $wslCmd
         }
         Step "sim: ccobs51 8-bit cobs (expect 03 7e 02 04 34 12 24 00)" {
-            $wslCmd = "cd $rootWsl/examples/mcs51_c_cobs && $ucsim -t STC15 " +
-                      "-S in=/dev/null,out=- ccobs51.ihx < sim.cmd | grep -q '03 7e 02 04 34 12 24'"
+            $wslCmd = "cd $rootWsl && $ucsim -t STC15 " +
+                      "-S in=/dev/null,out=- build/examples/at89c52/c_cobs/ccobs51.ihx " +
+                      "< examples/at89c52/c_cobs/sim.cmd | grep -q '03 7e 02 04 34 12 24'"
             wsl -e bash -lc $wslCmd
         }
     } else {

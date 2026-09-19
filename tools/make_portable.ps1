@@ -30,10 +30,10 @@ $zigBin   = Join-Path $repo "compiler\zig-out\bin\zig.exe"
 $zigLib   = Join-Path $repo "compiler\lib"
 $sdcc     = Join-Path $repo "tools\sdcc-mcs251-windows-x64\sdcc-mcs251"
 $inc      = Join-Path $repo "lib\include"
-$exUsb    = Join-Path $repo "examples\ai8051u_usb_cdc"
-$exLog    = Join-Path $repo "examples\ai8051u_zig_log"
-$exT0     = Join-Path $repo "examples\ai8051u_zig_t0print"
-$exUe     = Join-Path $repo "examples\ai8051u_zig_uart_echo"
+$exUsb    = Join-Path $repo "examples\ai8051u\usb_cdc"
+$exLog    = Join-Path $repo "examples\ai8051u\zig_log"
+$exT0     = Join-Path $repo "examples\ai8051u\zig_t0print"
+$exUe     = Join-Path $repo "examples\ai8051u\zig_uart_echo"
 $portRoot = Join-Path $repo "examples\portable"
 $portUsb  = Join-Path $exUsb "portable"
 $portLog  = Join-Path $exLog "portable"
@@ -123,6 +123,12 @@ foreach ($f in @("build.zig", "build.cmd")) {
 $devToml = Join-Path $repo $Device
 if (-not (Test-Path -LiteralPath $devToml)) { throw "missing device: $devToml" }
 $deviceJson = ((& $Python (Join-Path $repo "tools\mcs_device.py") $devToml --emit compiler-json) -join "`n") -replace "`r?`n", ""
+# 生成的 SFR Zig 模块：t0print/uart_echo 源码 `@import("dev")` 用（build.zig 传 -Mdev=device_sfr.zig）。
+$deviceSfrZig = ((& $Python (Join-Path $repo "tools\mcs_sfr.py") --device $devToml --emit zig) -join "`n") + "`n"
+foreach ($d in @("t0print", "uart_echo")) {
+    [System.IO.File]::WriteAllText((Join-Path $Out "$d\device_sfr.zig"), $deviceSfrZig,
+                                   (New-Object System.Text.UTF8Encoding($false)))
+}
 foreach ($d in @("ziglog", "t0print", "uart_echo")) {
     [System.IO.File]::WriteAllText((Join-Path $Out "$d\device.json"), $deviceJson,
                                    (New-Object System.Text.ASCIIEncoding))

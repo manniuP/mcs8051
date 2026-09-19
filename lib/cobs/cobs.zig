@@ -36,7 +36,7 @@
 //! 0x7E, id_lo, id_hi, 参数…, XOR 校验
 //! ```
 //! 参数：`u8`=1B、`u16`=2B 小端、`u32`=4B 小端、`logVar`=无符号 LEB128、
-//! `logStr`/`logBytes`=`LEB128(len)+原始字节`。主机端 `examples/ai8051u_zig_log/decode.ps1`
+//! `logStr`/`logBytes`=`LEB128(len)+原始字节`。主机端 `examples/ai8051u/zig_log/decode.ps1`
 //! 按同一张表先 COBS 解码再解析。
 //!
 //! ## 限制 / 约定

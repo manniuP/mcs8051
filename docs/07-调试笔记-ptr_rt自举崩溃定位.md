@@ -49,7 +49,7 @@
 
 ## ptrtest 现状（55MB 版本全流程已跑通）
 
-- `examples/ai8051u_ptrtest/`：ptrtest.zig（fill/sum）+ main.c
+- `examples/ai8051u/ptrtest/`：ptrtest.zig（fill/sum）+ main.c
 - 为绕过 SDCC 多参数约定（`_func_PARM_N` 全局变量，Zig 侧未实现），
   sum 已改为单参数；首参数 3 字节指针经 DPL/DPH/B 传递正常。
 - 全流程命令（zig→sdas251→sdcc→link）：
@@ -314,11 +314,11 @@ thread panic: integer does not fit in destination type   ← 崩在此处
 
 - 未提交修改 5 个文件（含插桩）：zig/src/main.zig、Compilation.zig、
   Zcu/PerThread.zig、Builtin.zig、codegen.zig（含 undefPtrBits 真修复）
-- 测试文件：`examples/ai8051u_ptrtest/empty.zig` 当前为 add 函数版本
+- 测试文件：`examples/ai8051u/ptrtest/empty.zig` 当前为 add 函数版本
 - 最新插桩 exe：`zig\.zig-cache-dbg\o\` 下 22:19 左右的 zig.exe
   （parse start/done 标记版，未测）
 - 未跟踪：zig-baseline/、zig/.zig-out-r3、.zig-out-r4、
-  examples/ai8051u_blink/led* 等，勿提交
+  examples/ai8051u/blink/led* 等，勿提交
 
 ## 收尾：清理摊子 + 固定“直连管线”（2026-09-14 晚）
 
@@ -358,9 +358,9 @@ C   源 --(sdcc -mmcs251 -c)--> .rel
 - 顶层 `.zig-cache`、`.zig-cache2`、`.zig-cache3`、`.xmake`
 - `zig.master-1415.bak`（误判为 0.17 master 时的备份）
 - git worktree `zig-baseline/`（基线与主仓历史重复，已 `git worktree remove`）
-- `examples/ai8051u_ptrtest/` 下全部调试产物（约 100 个 `.asm/.rel/.ihx/.txt`、
+- `examples/ai8051u/ptrtest/` 下全部调试产物（约 100 个 `.asm/.rel/.ihx/.txt`、
   多个 `.zig-cache*`、编译出的 `noptr/simple/simplest/ptrtest` 可执行文件）
-- `projects|examples/ai8051u_blink/` 构建产物（保留 `build.ps1`）
+- `projects|examples/ai8051u/blink/` 构建产物（保留 `build.ps1`）
 
 保留：源码（`main.c`/`ptrtest.zig`）、手工参考汇编
 `ptrtest_correct.asm`、`test_dr28.asm`、`vendor/`、`sdcc-c251/`、
@@ -399,7 +399,7 @@ $env:ZIG_LIB_DIR = "<repo>\compiler\lib"
 ```powershell
 xmake f --mcs_arch=mcs251    # 注意：xmake v3 用下划线，不是 --mcs-arch
 xmake build ptrtest
-# -> OK -> mcs251\examples\ai8051u_ptrtest\ptrtest.ihx
+# -> OK -> mcs251\build\examples\ai8051u\ptrtest\ptrtest.ihx
 ```
 
 ### 当时限制（后被下面的源码改写解决）
@@ -422,7 +422,7 @@ xmake build ptrtest
 | `@ptrFromInt(@intFromPtr(buf)+i).*` | 30 | 10 | ✓ 但标签太多 |
 | **`(@as(*u8, @ptrCast(buf + i))).*`** | **0** | **24** | ✅ 最佳 |
 
-### 采用的写法（`examples/ai8051u_ptrtest/ptrtest.zig`）
+### 采用的写法（`examples/ai8051u/ptrtest/ptrtest.zig`）
 
 ```zig
 export fn fill(buf: [*]u8) u8 {
@@ -560,7 +560,7 @@ mcs251 仿真不可用（ucsim 的 251 核是空壳，见上节），但 **8051�
   （内存类型名见 `info memory`）；回归风格还会先
   `set error unknown_code off`、`set opt selfjump_stop 0`。
 
-### 新增自检测试工程 `examples/at89c52_sim/`
+### 新增自检测试工程 `examples/at89c52/sim/`
 
 - **只用标准 8051 SFR**（AT89C52 风格，不依赖 STC 专有寄存器），ucsim 可直接执行。
 - C（`main.c`）：连续调用 Zig `led_next(u8)` 八次，逐项比对期望序列；
@@ -616,7 +616,7 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\compi
 - `zig-out\bin\zig.exe version` → `0.16.1`。
 - `build-obj -target x86_64-windows`（此前**必崩**）→ **exit 0**。
 - `-target mcs51-freestanding` / `mcs251-freestanding` → 正常出 asm。
-- 用它重建 `examples/at89c52_sim` 的 `simtest.ihx`，ucsim 里
+- 用它重建 `examples/at89c52/sim` 的 `simtest.ihx`，ucsim 里
   `0x8000=aa`、序列正确 → 产物可信。
 
 ### 意义
@@ -685,7 +685,7 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\compi
 
 验证（ucsim，AT89C52 风格自检）：
 
-- `examples/at89c52_sim`：C 传 `__xdata u8 *`，Zig `sum4` 读 4 字节求和；
+- `examples/at89c52/sim`：C 传 `__xdata u8 *`，Zig `sum4` 读 4 字节求和；
   `0x8000=aa`、`failcode=0`。
 - 三种写法均 `dr28=0` 且 `sdas8051` 通过：`buf[i]`、`(@as(*u8,@ptrCast(buf+i))).*`、`buf+1`。
 - fill/sum（mcs51 版 ptrtest）：`fill` 返回 5、`sum` 返回 20（`0x14`），`status=0xaa`。
@@ -706,7 +706,7 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\compi
 - 验证（ucsim）：
   - `add3(1,2,3)=6`、`add4(1,2,3,4)=10`；
   - **Zig 回调 C**：`viac(1) → cadd3(1,2,3) = 123`；
-  - `examples/at89c52_sim`（标量 + 指针 + 多参数）`status=0xaa`。
+  - `examples/at89c52/sim`（标量 + 指针 + 多参数）`status=0xaa`。
 - C 侧必须 `--stack-auto`（`xmake` 的 simtest 已加）。**未改 SDCC 源码**——
   `--stack-auto` 是现成开关。
 - 预留的 SDCC 分叉：`<workspace>\sdcc-c251-abi`（原 `sdcc-c251` 保持原样）。
@@ -726,7 +726,7 @@ zig build -Doptimize=ReleaseFast -Dno-lib --zig-lib-dir <workspace>\mcs251\compi
 - 验证（ucsim）：
   - extern（C 定义、Zig 读写）：`gv` 5→6（`inc_gv`/`get_gv`）；
   - Zig 定义（C 读写）：`export var counter`，C 侧 `counter`/`bump()` 一致；
-  - `examples/at89c52_sim` 增至 **标量 + 指针 + 多参数 + 全局** 全通过。
+  - `examples/at89c52/sim` 增至 **标量 + 指针 + 多参数 + 全局** 全通过。
 - 限制：非零初值（`var x = 42`）暂不生效（xdata 初始化需 XINIT + 启动拷贝，
   Zig 后端不发启动片段）。
 

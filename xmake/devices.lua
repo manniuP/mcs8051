@@ -47,7 +47,8 @@ target("devzig")
             raise("devzig 仅支持 mcs251（加 --mcs_arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_dev")
+        local scriptdir = path.join(projdir, "examples/ai8051u/dev")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/dev")
         local sdcc = get_config("sdcc251")
         local sdas = path.join(path.directory(sdcc), "sdas251.exe")
         local zig = get_config("zig")
@@ -71,7 +72,7 @@ target("devzig")
         os.setenv("ZIG_GLOBAL_CACHE_DIR", zig_cache)
         os.setenv("MCS_DEVICE", helpers.device_json(projdir, device))
         local led_zig = path.join(scriptdir, "led.zig")
-        local led_asm = path.join(scriptdir, "led.asm")
+        local led_asm = path.join(outdir, "led.asm")
         os.vrunv(zig, {"build-obj", (get_config("mcs_small") and "-OReleaseSmall" or "-ODebug"),
                        "-target", "mcs251-freestanding",
                        "--dep", "mcs", "--dep", "dev",
@@ -84,17 +85,17 @@ target("devzig")
         helpers.postprocess_asm(projdir, led_asm)
 
         -- [3/5] asm -> rel
-        local led_rel = path.join(scriptdir, "led.rel")
+        local led_rel = path.join(outdir, "led.rel")
         print("[3/5] asm -> rel : led.asm")
         os.vrunv(sdas, {"-plosgffw", led_rel, led_asm})
 
         -- [4/5] crt0 -> rel
-        local crt0_rel = path.join(scriptdir, "crt0.rel")
+        local crt0_rel = path.join(outdir, "crt0.rel")
         print("[4/5] crt0 -> rel: crt0.asm")
         os.vrunv(sdas, {"-plosgffw", crt0_rel, path.join(scriptdir, "crt0.asm")})
 
         -- [5/5] link（参数来自设备表）
-        local ihx = path.join(scriptdir, "dev.ihx")
+        local ihx = path.join(outdir, "dev.ihx")
         local devargs = helpers.device_sdcc_args(projdir, device)
         table.insert(devargs, 1, "-mmcs251")
         print("[5/5] link -> ihx : dev.ihx")
@@ -105,7 +106,8 @@ target("devzig")
     end)
 
     on_clean(function(target)
-        local scriptdir = path.join(os.projectdir(), "examples/ai8051u_dev")
+        local scriptdir = path.join(os.projectdir(), "examples/ai8051u/dev")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/dev")
         for _, n in ipairs({"led.asm", "led.rel", "crt0.rel", "dev.ihx", "dev.lk", "dev.map", "dev.mem"}) do
             os.tryrm(path.join(scriptdir, n))
         end
@@ -128,7 +130,8 @@ target("devled")
             raise("devled 仅支持 mcs251（加 --mcs_arch=mcs251）")
         end
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_led")
+        local scriptdir = path.join(projdir, "examples/ai8051u/led")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/led")
         local incdir = path.join(projdir, "lib/include")
         local haldir = path.join(projdir, "lib/stc-hal")
         local sdcc = get_config("sdcc251")
@@ -146,9 +149,9 @@ target("devled")
 
         local main_c    = path.join(scriptdir, "main.c")
         local delay_c   = path.join(haldir, "AI8051U_Delay.c")
-        local main_rel  = path.join(scriptdir, "main.rel")
-        local delay_rel = path.join(scriptdir, "delay.rel")
-        local ihx       = path.join(scriptdir, "devled.ihx")
+        local main_rel  = path.join(outdir, "main.rel")
+        local delay_rel = path.join(outdir, "delay.rel")
+        local ihx       = path.join(outdir, "devled.ihx")
         local cflags    = {"-mmcs251", "--model-large", "-I", incdir, "-I", haldir}
 
         print("[1/3] C -> rel   : main.c, AI8051U_Delay.c")
@@ -169,7 +172,8 @@ target("devled")
 
     on_clean(function(target)
         local projdir = os.projectdir()
-        local scriptdir = path.join(projdir, "examples/ai8051u_led")
+        local scriptdir = path.join(projdir, "examples/ai8051u/led")
+        local outdir = import("xmake.helpers", {rootdir = os.projectdir()}).ensure_outdir("ai8051u/led")
         for _, n in ipairs({"main.rel", "delay.rel", "devled.ihx", "devled.lk", "devled.map", "devled.mem"}) do
             os.tryrm(path.join(scriptdir, n))
         end

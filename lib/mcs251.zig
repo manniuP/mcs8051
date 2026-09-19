@@ -56,6 +56,32 @@ const builtin = @import("builtin");
 const is_mcs51 = builtin.cpu.arch == .mcs51;
 
 // ---------------------------------------------------------------------------
+// 冷热 / 放置 / 优化等级标签（linksection 字符串）：可用空格组合，如
+// `linksection(m.xdata ++ " " ++ m.O5)`。无放置标签→编译器自决；无等级→默认 O3。
+// ---------------------------------------------------------------------------
+
+// 放置：按速度 `data`(直址) > `idata`(@r0) > `edata`(@dptr) > `xdata`(@dpx) > `exdata`(片外)。
+pub const data = ".data";
+pub const idata = ".idata";
+pub const edata = ".edata";
+pub const xdata = ".xdata";
+pub const exdata = ".exdata";
+
+// 优化等级（与 GCC 对齐）：`O0`–`O3` 为优化力度（偏速度）、`Ofast` 最快、`Os` 偏体积；
+// 未标注时默认 `O3`（跟随全局 `-O*`）。
+pub const O0 = ".O0";
+pub const O1 = ".O1";
+pub const O2 = ".O2";
+pub const O3 = ".O3";
+pub const Ofast = ".Ofast";
+pub const Os = ".Os";
+
+// 兼容旧名（等价组合）。
+pub const hot = ".data.O0";
+pub const warm = ".idata.O3";
+pub const cold = ".cold";
+
+// ---------------------------------------------------------------------------
 // 内部：comptime 十六进制/十进制字符
 // ---------------------------------------------------------------------------
 
