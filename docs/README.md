@@ -57,6 +57,10 @@
   mcs_loop → mcs_overlay`）、安全不变式（base→final 只删行）、加新规则放哪。
 - [25-MCS后端框架](25-MCS后端框架.md) —— 自研后端（`codegen/mcs/` + `link/Asx.zig`）的框架图、
   文件职责、`Gen` 两遍结构、上游接入点、**迭代指南（改哪儿）**。
+- [26-上游跟进方案](26-上游跟进方案.md) —— 跟上 Zig 上游（含 1.0）的方案：fork 直系后代、delta 与接入 patch、rebase 流程。
+- [27-上游迁移协定](27-上游迁移协定.md) —— 方便迁移的硬约定（目录归属 / 最小接入 / commit 分层）；自检 `tools/compiler_sync_check.ps1`。
+- [28-编程指南](28-编程指南.md) —— **写固件速查**：SFR 三风格、数据空间/放置、优化等级、中断/ISR、
+  C↔Zig 互操作、常用库、构建/调试、常见坑。
 
 源码位置：`../examples/ai8051u/blink/`、`../examples/ai8051u/ptrtest/`
 （3 字节指针互操作见 [07](07-调试笔记-ptr_rt自举崩溃定位.md)）。
