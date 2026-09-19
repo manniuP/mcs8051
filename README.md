@@ -23,7 +23,7 @@ xmake f --mcs_arch=mcs251
 
 # C + Zig 3 字节指针互操作验证（M3）
 xmake build ptrtest
-# -> examples\ai8051u_ptrtest\ptrtest.ihx
+# -> build\examples\ai8051u\ptrtest\ptrtest.ihx
 ```
 
 ---
@@ -31,7 +31,7 @@ xmake build ptrtest
 ## 许可
 
 本仓以 **Apache License 2.0** 发布（见 [`LICENSE`](LICENSE)）。
-含少量 **STC 官方版权 / 衍生**内容（`lib/stc-hal/`、`examples/ai8051u_usb_{cdc,hid}/src/`、
+含少量 **STC 官方版权 / 衍生**内容（`lib/stc-hal/`、`examples/ai8051u/usb_{cdc,hid}/src/`、
 `lib/include/ai8051u_sfr.h`），**不适用 Apache-2.0**，版权与条款详见
 [`THIRD-PARTY.md`](THIRD-PARTY.md)。
 

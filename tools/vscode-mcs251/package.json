@@ -1,0 +1,74 @@
+{
+  "name": "mcs251-debug",
+  "displayName": "MCS-251 调试（QEMU）",
+  "description": "用 SDCC/Zig 产出的 CDB + QEMU GDB RSP 调试 MCS-51/251（AI8051U 等）",
+  "version": "0.0.1",
+  "publisher": "manniu",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Debuggers"
+  ],
+  "activationEvents": [
+    "onDebugResolve:mcs251"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "debuggers": [
+      {
+        "type": "mcs251",
+        "label": "MCS-251（QEMU）",
+        "languages": [
+          "c",
+          "zig"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "hex",
+              "cdb"
+            ],
+            "properties": {
+              "hex": {
+                "type": "string",
+                "description": "固件 .ihx/.hex（Windows 路径，适配器会转成 WSL 路径）"
+              },
+              "cdb": {
+                "type": "string",
+                "description": "SDCC/Zig 生成的 .cdb（Windows 路径）"
+              },
+              "qemu": {
+                "type": "string",
+                "default": "~/qemu-mcs/build/qemu-system-mcs251",
+                "description": "WSL 里的 qemu-system-mcs251 路径（默认 ~ 展开）"
+              },
+              "machine": {
+                "type": "string",
+                "default": "stc32g144k246"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": false
+              },
+              "serial": {
+                "type": "boolean",
+                "default": true,
+                "description": "把 QEMU 串口(UART)输出转发到调试控制台"
+              },
+              "adapterPath": {
+                "type": "string",
+                "description": "mcs_dap.py 的路径（默认在打开的工作区里自动找）"
+              },
+              "useWsl": {
+                "type": "boolean",
+                "default": true,
+                "description": "是否通过 wsl 启动适配器（QEMU 在 WSL 里）"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

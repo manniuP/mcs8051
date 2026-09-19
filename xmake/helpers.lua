@@ -42,6 +42,33 @@ function device_sfr_zig(projdir, device, outfile)
     return outfile
 end
 
+-- 生成物集中目录：`build/examples/<rel>/`（`rel` 形如 `ai8051u/zig_led`）。
+-- 所有构建产物（.asm/.rel/.ihx/.cdb/…）都写这里，`build/` 已被 .gitignore 忽略，
+-- 故无需再为每个示例单独写忽略规则；源码目录里只留源文件。
+function ensure_outdir(rel)
+    local projdir = os.projectdir()
+    local root = path.join(projdir, "build")
+    if not os.isdir(root) then os.mkdir(root) end
+    local exroot = path.join(root, "examples")
+    if not os.isdir(exroot) then os.mkdir(exroot) end
+    local d = path.join(exroot, rel)
+    -- rel 可能含中间目录（平台名），逐级创建
+    local cur = exroot
+    for seg in tostring(rel):gmatch("[^/\\]+") do
+        cur = path.join(cur, seg)
+        if not os.isdir(cur) then os.mkdir(cur) end
+    end
+    return d
+end
+
+-- 生成/刷新 build/devices/device_sfr.zig（Zig 示例里 `@import("dev")` 用），并确保目录存在。
+function ensure_device_sfr_zig(projdir, device)
+    local outdir = path.join(projdir, "build/devices")
+    if not os.isdir(path.join(projdir, "build")) then os.mkdir(path.join(projdir, "build")) end
+    if not os.isdir(outdir) then os.mkdir(outdir) end
+    return device_sfr_zig(projdir, device, path.join(outdir, "device_sfr.zig"))
+end
+
 -- xmake/helpers.lua —— 供 xmake.lua 的 on_build 通过 import("helpers") 复用。
 --
 -- 背景：xmake 的 on_build 在沙箱里执行，**看不到 xmake.lua 脚本级函数**，

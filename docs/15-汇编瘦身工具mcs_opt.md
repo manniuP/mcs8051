@@ -25,7 +25,7 @@
   > 注意：xmake 的 `on_build` 沙箱**看不到脚本级函数**，所以那段调用只能在每个目标里
   > 内联展开，不能抽成 helper。
 
-## 3. 规则（R1~R5）
+## 3. 规则（R1~R6）
 
 均在**基本块内**、不跨标签/分支/调用；未知指令一律当“清空状态”的屏障；重复跑到不动点。
 
@@ -37,9 +37,14 @@
 | **R4** | A 为编译期常量时直接写目标寄存器 | `mov a,#0x12 ; mov dpl,a` → `mov dpl,#0x12` |
 | **R5a** | `ejmp L` 紧跟 `L:`（跳到下一行）= 空操作 → 删跳转 | 后端空块/循环常生成 |
 | **R5b** | 无条件转移（`ejmp/ljmp/sjmp/ajmp/jmp/ret/reti/eret`）之后、下一标签之前的不可达指令 → 删 | 函数尾多余的 `eret` 等 |
+| **R6** | C 风格固定地址读-改-写融合：`mov a,dir8 [spill] anl/orl/xrl a,#imm [spill] mov dir8,a` → 单条 `anl/orl/xrl dir8,#imm`（R4 同时扩展到 `mov a,#C ; mov dir8,a` → `mov dir8,#C`） | `dev.p.P_SW1.* &= ~0xc0;` → `anl 0xba,#0x3f` |
 
 `mov Y,X` 的合法性（R3）按 sdas251 实测表判断（见 `_can_mov`）：如 `@spx` 只能进
 `a`/`rN`，不能进 `dpl/dph/b`；`mov @spx,#imm` 不存在等。
+
+R6 安全前提：末尾 store 后 **A 不再被读**、中间溢出的帧槽此后不再被读（`_a_dead_after` /
+`_slots_dead_after`，跳过 `G$…==.` 调试符号；`push/pop`/`spx` 调整后保守）。不满足则保留原序列。
+示例 `examples/ai8051u/sfr_ptr`（`zigsfrptr`）。细节见 [24-优化器管线总览](24-优化器管线总览.md) §5。
 
 ## 4. 用法与自测
 
@@ -47,8 +52,8 @@
 python tools\mcs_opt.py <file.asm>            # 就地改写（构建已自动调用）
 python tools\mcs_opt.py <in.asm> -o <out.asm> # 输出到别处
 python tools\mcs_opt.py <file.asm> --stats    # 各规则命中次数 + 指令数变化
-python tools\mcs_opt.py --self-test           # 内置回归用例（R1~R5，8 个）
-python tools\mcs_opt.py <file.asm> --no-r5    # 关闭某条规则（r1..r5）
+python tools\mcs_opt.py --self-test           # 内置回归用例（R1~R6，13 个）
+python tools\mcs_opt.py <file.asm> --no-r5    # 关闭某条规则（r1..r6）
 ```
 
 ## 5. 各例程实测（CSEG 字节）

@@ -3,7 +3,7 @@
 本工程演示如何用 **C（STC AI8051U HAL 库）+ Zig（MCS 后端）** 共同构建一个可
 烧录的流水灯固件，是 [docs/](README.md) 中「Zig + SDCC 混编」流程的完整落地示例。
 
-> 源码在 `examples/ai8051u_blink/`，本说明文档统一收录在 `docs/`。
+> 源码在 `examples/ai8051u/blink/`，本说明文档统一收录在 `docs/`。
 
 ## 效果
 
@@ -13,7 +13,7 @@
 ## 工程结构
 
 ```
-examples/ai8051u_blink/
+examples/ai8051u/blink/
   main.c        C 主程序：STC HAL 配置 P1、写 P1、调 delay_ms
   led.zig       Zig 逻辑：export fn led_next(u8) u8，返回下一个灯位
   build.ps1     构建脚本：C→rel，Zig→asm→rel，再链接成 ihx
@@ -34,7 +34,7 @@ examples/ai8051u_blink/
 ## 构建
 
 ```powershell
-cd examples\ai8051u_blink
+cd examples\ai8051u\blink
 .\build.ps1
 ```
 

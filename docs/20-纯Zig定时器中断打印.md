@@ -1,6 +1,6 @@
 # 20 - 纯 Zig 定时器中断打印（Timer0 ISR + UART1）
 
-> 结论：**可以**。示例 `examples/ai8051u_zig_t0print`，`xmake f --mcs_arch=mcs251; xmake build zigprint`
+> 结论：**可以**。示例 `examples/ai8051u/zig_t0print`，`xmake f --mcs_arch=mcs251; xmake build zigprint`
 > → `t0print.ihx`。QEMU（机 `stc32g144k246`）与**真机 AI8051U-34K64**均已实测：UART1 每秒输出一行
 > `t0\r\n`（真机 COM8@115200，行间隔实测 1.00s）。
 > 对应 STC 的 C 版：Timer2 作波特率发生器 + Timer0 1ms 中断 + 在 ISR 里打印。
@@ -92,7 +92,7 @@ export fn t0_isr() void {         // ISR：无帧
 - 真机 AI8051U 需 `--code-loc 0xff0000`、I/O 先配 `PxM0/PxM1`、硬件选项 CPU=32-Bit；
   UART1 在 P3.1(P3.0)，需 USB-TTL 才能看输出。
 
-## 5. 附：UART1 接收中断回环（`examples/ai8051u_zig_uart_echo`，`xmake build ziguart`）
+## 5. 附：UART1 接收中断回环（`examples/ai8051u/zig_uart_echo`，`xmake build ziguart`）
 
 同样的「无帧 ISR + `ecall`」模式，用在 UART1 中断（号 4，向量 `FF:0023`）上，实现回显。
 **要处理连续突发**，需一个发送环形缓冲（否则上一字节没发完又写 `SBUF` 会丢字节）：

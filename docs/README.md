@@ -27,7 +27,7 @@
 - [09-工程与示例总览](09-工程与示例总览.md) —— `examples/` 索引与新建工程约定（原 `projects/README.md`）。
 - [10-工程-ai8051u_blink](10-工程-ai8051u_blink.md) —— 完整 C + Zig 流水灯工程说明。
 - [11-示例-ai8051u_blink](11-示例-ai8051u_blink.md) —— 最小 C + Zig 示例说明（该示例已并入
-  `examples/ai8051u_blink`）。
+  `examples/ai8051u/blink`）。
 - [13-8位与32位模式与Flash布局](13-8位与32位模式与Flash布局.md) —— AI8051U 单核双模、
   共用同一 64K Flash/复位入口，两种固件不能并存（含 8 位固件构建方法）。
 - [14-USB-CDC移植笔记](14-USB-CDC移植笔记.md) —— 把 STC 的 Keil C251 库（USB）移植到 SDCC
@@ -43,16 +43,27 @@
   `examples/vscode_mixed_xmake_zig/` 接入。
 - [18-后端尺寸与mcs51多字节端序](18-后端尺寸与mcs51多字节端序.md) —— `appendAdjust` 单条
   `add/sub spx,#imm16`、`-OReleaseSmall` 条件融合扩展（`.not`/`.bool_and`/`.bool_or`）、
-  **MCS-51 多字节内存读端序修复**（`memByteDisp`）、延伸的 mcs51 自检。
+   **MCS-51 多字节内存读端序修复**（`memByteDisp`）、延伸的 mcs51 自检。
+- [20-纯Zig定时器中断打印](20-纯Zig定时器中断打印.md) —— T0 中断里 UART1 每秒打印一行（ISR 无栈帧约定）。
+- （**19-设备表规范与用法**：待写。）
 - [21-指令周期参考与bench验证](21-指令周期参考与bench验证.md) —— AI8051U 附录A.1.3 指令周期
   参考表 + `tools/mcs_cycles.py`（逐条/按函数静态周期）+ 真机 `zigbench` 逐周期验证 + 优化收益计算。
 - [22-循环下行计数DJNZ](22-循环下行计数DJNZ.md) —— 构建层 `tools/mcs_loop.py`：把后端生成的
   计数 `while` 循环改写为「下行计数 + `djnz`」（`MCS_LOOP=1`），真机 `zigbench` 读循环 −63%~−70%。
+- [23-寄存器操作与SFR可读API](23-寄存器操作与SFR可读API.md) —— SFR 三种写法（`mcs.sfr*` 位指令 /
+  `dev.reg.*` 寄存器对象 / `dev.p.*` C 风格指针）+ 生成器、示例与 R6 融合。
+- [24-优化器管线总览](24-优化器管线总览.md) —— 构建层优化链路（`fix → mcs_opt R1–R6 → mcs_ir →
+  mcs_loop → mcs_overlay`）、安全不变式（base→final 只删行）、加新规则放哪。
+- [25-MCS后端框架](25-MCS后端框架.md) —— 自研后端（`codegen/mcs/` + `link/Asx.zig`）的框架图、
+  文件职责、`Gen` 两遍结构、上游接入点、**迭代指南（改哪儿）**。
 
-源码位置：`../examples/ai8051u_blink/`、`../examples/ai8051u_ptrtest/`
+源码位置：`../examples/ai8051u/blink/`、`../examples/ai8051u/ptrtest/`
 （3 字节指针互操作见 [07](07-调试笔记-ptr_rt自举崩溃定位.md)）。
 
-## 三、计划与仓库说明
+## 三、历史 / 归档（旧文，仅供参考，勿作当前事实）
+
+> 这批是发布前的旧计划/说明，保留供追溯；当前状态以编号文档（01–23）与仓库为准。
+> 文件名与相对链接未改动，故根 `README.md` 仍可指向它们。
 
 - [PLAN-计划](PLAN-计划.md) —— 总体计划、ABI 冻结、里程碑（原根 `PLAN.md`）。
 - [PLAN-计划-中英](PLAN-计划-中英.md) —— 中英对照版（原根 `PLAN_zh_en.md`）。
@@ -82,8 +93,8 @@
 | --- | --- |
 | `driver/README.md` | [08-驱动与链接详解](08-驱动与链接详解.md) |
 | `examples/README.md` | [09-工程与示例总览](09-工程与示例总览.md) |
-| `examples/ai8051u_blink/README.md` | [10-工程-ai8051u_blink](10-工程-ai8051u_blink.md) |
-| `examples/ai8051u_blink/README.md` | [11-示例-ai8051u_blink](11-示例-ai8051u_blink.md) |
+| `examples/ai8051u/blink/README.md` | [10-工程-ai8051u_blink](10-工程-ai8051u_blink.md) |
+| `examples/ai8051u/blink/README.md` | [11-示例-ai8051u_blink](11-示例-ai8051u_blink.md) |
 | 根 `PLAN.md` | [PLAN-计划](PLAN-计划.md) |
 | 根 `PLAN_zh_en.md` | [PLAN-计划-中英](PLAN-计划-中英.md) |
 | 根 `readme_zh.md` | [仓库说明-中文](仓库说明-中文.md) |

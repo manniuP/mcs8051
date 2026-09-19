@@ -110,7 +110,7 @@ python tools\mcs_device.py --self-test
 | `summary/validate` | 摘要 / 校验报告 | — |
 
 映射依据见 `docs/19-设备描述与链接脚本规则.md`（规划中）与 SDCC `src/SDCCmain.c` 的
-`WRITE_SEG_LOC`；AI8051U 实际产出对照 `examples/ai8051u_zig_mem/mem.lk`。
+`WRITE_SEG_LOC`；AI8051U 实际产出对照 `build/examples/ai8051u/zig_mem/mem.lk`。
 
 ## 5. 与编译/HAL 的接口（后续）
 
@@ -186,7 +186,7 @@ xmake f --mcs_arch=mcs251 --device=devices\stc\ai8051u-34k64.toml
 xmake build devzig
 ```
 
-新示例 `examples/ai8051u_dev/led.zig`：
+新示例 `examples/ai8051u/dev/led.zig`：
 ```zig
 const dev = @import("dev");   // 生成的 device_sfr.zig（SFR 地址）
 const m   = @import("mcs");   // lib/mcs251.zig

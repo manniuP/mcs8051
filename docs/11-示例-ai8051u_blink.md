@@ -3,7 +3,7 @@
 一个最小的 **C + Zig 混合工程**：C 用 STC 官方 AI8051U HAL C 库驱动 P1，
 Zig MCS 后端负责流水灯图案的计算，两者由 SDCC 工具链链接成同一个 Intel HEX。
 
-> 源码在 `examples/ai8051u_blink/`，本说明文档统一收录在 `docs/`。
+> 源码在 `examples/ai8051u/blink/`，本说明文档统一收录在 `docs/`。
 
 ## 效果
 
@@ -26,7 +26,7 @@ Zig MCS 后端负责流水灯图案的计算，两者由 SDCC 工具链链接成
 ## 编译
 
 ```powershell
-cd examples\ai8051u_blink
+cd examples\ai8051u\blink
 .\build.ps1
 ```
 

@@ -45,12 +45,12 @@ zig cc lib/cordic/cordic_test.c lib/cordic/cordic.c -lm -o cordic_test.exe
 - **象限折叠**：CORDIC 旋转只在 |θ|≤~90° 收敛；>90° 折到 `180°±` 后对 cos/sin **同时取反**。
 - **Q15 饱和（重要）**：结果可能到 ±32769，**必须夹到 `[-32768,32767]`**；在 mcs251 上
   `int` 是 16 位，不夹会溢出变号（0° 的 cos 变成 -32766！）。主机 `int` 是 32 位，
-  所以**主机测试发现不了这个 bug，是 QEMU 16 位运行才暴露的**（见 `examples/ai8051u_cmd/`）。
+  所以**主机测试发现不了这个 bug，是 QEMU 16 位运行才暴露的**（见 `examples/ai8051u/cmd/`）。
 - 中间量一律 `long`（32 位）防溢出；增益 K=0.607252935（Q15=19898）。
 - 未做：Q31（32 位）变体；`atan2` 的 x=y=0 返回 0。
 
 ## 设备端
 
-已在 `examples/ai8051u_cmd` 暴露为命令（`0x0010 cossin` / `0x0011 atan2` / `0x0012 sqrt` /
+已在 `examples/ai8051u/cmd` 暴露为命令（`0x0010 cossin` / `0x0011 atan2` / `0x0012 sqrt` /
 `0x0013 mag`），可经真机 UART 或 **QEMU 无板仿真**验证：
 `cmd.py --tcp 127.0.0.1:5555 cordictest`（随机向量对比 Python math）。

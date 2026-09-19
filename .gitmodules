@@ -2,3 +2,7 @@
 	path = sdcc
 	url = https://github.com/manniuP/sdcc-c251.git
 	branch = mcs251-backend
+[submodule "compiler"]
+	path = compiler
+	url = git@github.com:manniuP/zig-mcs51-backend.git
+	branch = mcs251-backend

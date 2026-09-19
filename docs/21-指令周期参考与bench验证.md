@@ -78,7 +78,7 @@ python tools\mcs_cycles.py --range 1255 1291 --taken <x.asm>   # 指定行区间
 
 ## 4. 真机 bench 验证（AI8051U-34K64 @40MHz）
 
-`examples/ai8051u_zig_bench` 用 Timer0 1T 测「N 次操作」的周期。各测量函数结构相同：
+`examples/ai8051u/zig_bench` 用 Timer0 1T 测「N 次操作」的周期。各测量函数结构相同：
 `prologue + ecall t0Now + 循环(NREAD=500) + ecall t0Now + sub + epilogue`，
 其中固定的**调用开销 OVH**（两次 `t0Now`、prologue/epilogue、`sub` 等）由 nop 基线标定。
 

@@ -30,12 +30,19 @@
       R5b 无条件转移（`ejmp/ljmp/sjmp/ajmp/jmp/ret/reti/eret`）之后、下一个标签
           之前的指令不可达 -> 删掉（遇标签/指令边界即恢复可达）。
 
+  R6 C 风格固定地址读-改-写融合（`dev.p.P_SW1.* &= ~0xc0;` 这类）：
+        mov a,0xba ; [spill] anl a,#0x3f ; [spill] mov 0xba,a
+          ->  anl 0xba,#0x3f
+      （`orl`/`xrl` 同理；`mov a,#C ; mov dir8,a` -> `mov dir8,#C` 见 R4 扩展。）
+      安全性：末尾 store 之后 **A 不再被读**、且中间溢出的帧槽此后也不再被读，
+      才融合（否则保留原序列）。`dir8` 在模式内只被读、不被写。
+
 用法：
     python mcs_opt.py <file.asm>              # 就地改写
     python mcs_opt.py <in.asm> -o <out.asm>   # 输出到别处
     python mcs_opt.py <file.asm> --stats      # 打印各规则命中次数与指令数变化
-    python mcs_opt.py --self-test             # 内置回归用例（R1~R5）
-    python mcs_opt.py <file.asm> --no-r5      # 关闭某条规则（r1..r5）
+    python mcs_opt.py --self-test             # 内置回归用例（R1~R6）
+    python mcs_opt.py <file.asm> --no-r5      # 关闭某条规则（r1..r6）
 
 注意：仅处理 `mov`/`inc`/`dec`/`push`/`pop` 等已建模指令；未知指令一律当作
 「清空状态」的屏障处理，宁可少优化也不改语义。
@@ -114,6 +121,27 @@ def _canon_loc(op: str):
 
 def _is_imm(op: str) -> bool:
     return op.strip().startswith("#")
+
+
+# 直接地址（SFR / data 的 `0xNN`），如 `0xba`（P_SW1）。
+DIRECT_RE = re.compile(r"^0x[0-9a-fA-F]{1,2}$")
+
+
+def _is_direct(op: str) -> bool:
+    return bool(DIRECT_RE.match(op.strip()))
+
+
+def _is_spill_store(e: Entry) -> bool:
+    """`mov @spx<d>,a`：把 A 溢出到帧槽。"""
+    return (e.is_insn and e.mnem == "mov" and len(e.ops) == 2
+            and _norm_reg(e.ops[1]) == "a" and _canon_memstack(e.ops[0]) is not None)
+
+
+def _is_debug(e) -> bool:
+    """`G$… ==.` / `C$…$行 ==.` / `XG$… ==.` 调试符号行：对 A/帧槽无影响。"""
+    if not e.is_insn:
+        return False
+    return e.raw.split("\n", 1)[0].strip().endswith("==.")
 
 
 def _can_mov(dst: str, src: str) -> bool:
@@ -345,6 +373,9 @@ def _a_dead_after(entries, start):
     n = len(entries)
     while i < n:
         e = entries[i]
+        if _is_debug(e):
+            i += 1
+            continue
         if not e.is_insn:
             return False
         rw = _classify_aw(e.mnem, e.ops)
@@ -359,11 +390,100 @@ def _a_dead_after(entries, start):
     return False
 
 
+def _slots_dead_after(entries, start, slots):
+    """start 之后（同一函数内）这些帧槽是否不再被读（可安全删其 store）。
+
+    遇到 `push/pop` 或 `spx` 调整后，帧槽文本偏移会失真；此后再出现任何 `@spx`
+    访问即判不安全（保守）。函数收尾 `add/sub spx,#…; eret` 之后无 `@spx`，故可放行。
+    """
+    if not slots:
+        return True
+    want = set(slots)
+    shifted = False
+    i = start
+    n = len(entries)
+    while i < n:
+        e = entries[i]
+        if _is_debug(e):
+            i += 1
+            continue
+        if not e.is_insn:
+            # 新函数（`_name:`）/ 新区（`.area`）即终点；函数内标签/空行继续。
+            if e.kind == "directive" or (e.kind == "label" and e.label and e.label.startswith("_")):
+                return True
+            i += 1
+            continue
+        if e.mnem in ("push", "pop") or (e.ops and _norm_reg(e.ops[0]) == "spx"):
+            shifted = True
+            i += 1
+            continue
+        if shifted:
+            # 偏移已失真：再有任何帧槽访问都保守判不安全。
+            if any(_canon_memstack(op) is not None for op in e.ops):
+                return False
+            i += 1
+            continue
+        for oi, op in enumerate(e.ops):
+            if _canon_memstack(op) in want:
+                # `mov <slot>,a|rN` 是写（不算读）；其余算读。
+                if e.mnem == "mov" and oi == 0 and len(e.ops) == 2 and (
+                        _norm_reg(e.ops[1]) == "a" or bool(REG8_RE.match(_norm_reg(e.ops[1])))):
+                    continue
+                return False
+        i += 1
+    return True
+
+
+def _match_rmw(entries, i):
+    """匹配 `mov a,dir8 [spill] anl/orl/xrl a,#imm [spill] mov dir8,a`。
+
+    返回 (k, op, D, imm, spills)：k 为末尾 `mov dir8,a` 的下标；否则 None。
+    `[spill]` = 0+ 条 `mov @spx<d>,a`；调试符号行透明。
+    """
+    n = len(entries)
+    e = entries[i]
+    if not (e.is_insn and e.mnem == "mov" and len(e.ops) == 2
+            and _norm_reg(e.ops[0]) == "a" and _is_direct(e.ops[1])):
+        return None
+    D = e.ops[1].strip().lower()
+    spills = []
+    j = i + 1
+    while j < n:
+        if _is_debug(entries[j]):
+            j += 1
+            continue
+        if _is_spill_store(entries[j]):
+            spills.append(_canon_memstack(entries[j].ops[0]))
+            j += 1
+            continue
+        break
+    if not (j < n and entries[j].is_insn and entries[j].mnem in ("anl", "orl", "xrl")
+            and len(entries[j].ops) == 2 and _norm_reg(entries[j].ops[0]) == "a"
+            and _is_imm(entries[j].ops[1])):
+        return None
+    op = entries[j].mnem
+    imm = entries[j].ops[1].strip()
+    k = j + 1
+    while k < n:
+        if _is_debug(entries[k]):
+            k += 1
+            continue
+        if _is_spill_store(entries[k]):
+            spills.append(_canon_memstack(entries[k].ops[0]))
+            k += 1
+            continue
+        break
+    if not (k < n and entries[k].is_insn and entries[k].mnem == "mov" and len(entries[k].ops) == 2
+            and entries[k].ops[0].strip().lower() == D and _norm_reg(entries[k].ops[1]) == "a"):
+        return None
+    return (k, op, D, imm, spills)
+
+
 def _optimize_once(text: str, rules):
     lines = text.splitlines(keepends=True)
     entries = _parse(lines)
-    stats = {"r1": 0, "r2": 0, "r3": 0, "r4": 0, "r5": 0, "r5f": 0,
-             "spx_saved": 0, "in_before": 0, "in_after": 0}
+    stats = {"r1": 0, "r2": 0, "r3": 0, "r4": 0, "r5": 0, "r5f": 0, "r6": 0,
+             "spx_saved": 0, "r6_saved": 0, "in_before": 0, "in_after": 0}
     stats["in_before"] = sum(1 for e in entries if e.is_insn)
 
     out = []
@@ -426,6 +546,23 @@ def _optimize_once(text: str, rules):
                     i = j
                     continue
 
+        # R6: `mov a,dir8 ; [spill] anl/orl/xrl a,#imm ; [spill] mov dir8,a`
+        #     -> 单条 `anl/orl/xrl dir8,#imm`（C 风格 `p.* &= …`）。
+        #     安全性：末尾 mov 后 A 不再被读（否则不融合），且涉及的帧槽此后也不再被读
+        #     （否则不能删 spill）；`dir8` 在模式内只被读、不被写。
+        if "r6" in rules and e.mnem == "mov":
+            m = _match_rmw(entries, i)
+            if m is not None:
+                k, op, D, imm, spills = m
+                if _a_dead_after(entries, k + 1) and _slots_dead_after(entries, k + 1, spills):
+                    out.append(_render(_indent(e.raw), op, [D, imm], "\n"))
+                    stream.clobber("a")
+                    stream.clobber(D)
+                    stats["r6"] += 1
+                    stats["r6_saved"] += k - i
+                    i = k + 1
+                    continue
+
         # R3/R4: mov a,X ; mov Y,a  ->  mov Y,X 或 mov Y,#C（a 随后无用）。
         if e.mnem == "mov" and len(e.ops) == 2 and _norm_reg(e.ops[0]) == "a":
             nxt = entries[i + 1] if i + 1 < n else None
@@ -458,7 +595,7 @@ def _optimize_once(text: str, rules):
                             cand = stream.vals.get(sloc)
                             if cand and cand[0] == "c":
                                 tok = cand
-                    if tok is not None and (dst in REG8 or REG8_RE.match(dst)):
+                    if tok is not None and (dst in REG8 or REG8_RE.match(dst) or _is_direct(dst)):
                         out.append(_render(_indent(e.raw), "mov", [dst, tok[1]], "\n"))
                         stream.clobber("a")
                         stream.vals[dst] = tok
@@ -491,13 +628,14 @@ def _optimize_once(text: str, rules):
 
     result = "".join(out)
     stats["in_after"] = (stats["in_before"] - stats["r2"] - stats["r3"]
-                         - stats["r4"] - stats["r5"] - stats["spx_saved"])
+                         - stats["r4"] - stats["r5"] - stats["spx_saved"]
+                         - stats["r6_saved"])
     return result, stats
 
 
-def optimize(text: str, rules=("r1", "r2", "r3", "r4", "r5")):
+def optimize(text: str, rules=("r1", "r2", "r3", "r4", "r5", "r6")):
     """重复应用规则直到不再变化（R3/R4 可能为后续 R2 创造新机会）。"""
-    keys = ("r1", "r2", "r3", "r4", "r5", "spx_saved")
+    keys = ("r1", "r2", "r3", "r4", "r5", "r6", "spx_saved", "r6_saved")
     total = {k: 0 for k in keys}
     cur = text
     in_before = None
@@ -511,7 +649,7 @@ def optimize(text: str, rules=("r1", "r2", "r3", "r4", "r5")):
             break
     total["in_before"] = in_before
     total["in_after"] = (in_before - total["r2"] - total["r3"] - total["r4"]
-                         - total["r5"] - total["spx_saved"])
+                         - total["r5"] - total["spx_saved"] - total["r6_saved"])
     return cur, total
 
 
@@ -543,6 +681,21 @@ def _self_test() -> int:
         ("R5 遇标签即恢复可达",
          "\t.area CSEG (CODE)\n_f:\n        ejmp L1\nL_mid:\n        mov a,#0x01\nL1:\n        ret\n",
          "mov a,#0x01", 1),
+        ("R4 常量转发到直接地址",
+         "\t.area CSEG (CODE)\n_f:\n        mov a,#0x12\n        mov 0xba,a\n        mov a,#0x34\n        ret\n",
+         "mov 0xba,#0x12", 1),
+        ("R6 融合 C 风格 RMW",
+         "\t.area CSEG (CODE)\n_f:\n        mov a,0xba\n        anl a,#0x3f\n        mov 0xba,a\n        mov a,#0x00\n        ret\n",
+         "anl 0xba,#0x3f", 1),
+        ("R6 跨 spill 与调试符号",
+         "\t.area CSEG (CODE)\n_f:\n        mov a,0xba\n        mov @spx,a\n        anl a,#0x3f\n        mov @spx-0x1,a\n        mov 0xba,a\n\tG$x ==.\n        mov a,#0x00\n        ret\n",
+         "anl 0xba,#0x3f", 1),
+        ("R6 不融合（A 仍被读）",
+         "\t.area CSEG (CODE)\n_f:\n        mov a,0xba\n        anl a,#0x3f\n        mov 0xba,a\n        mov dpl,a\n        ret\n",
+         "mov 0xba,a", 1),
+        ("R6 不融合（帧槽仍被读）",
+         "\t.area CSEG (CODE)\n_f:\n        mov a,0xba\n        mov @spx,a\n        anl a,#0x3f\n        mov 0xba,a\n        mov a,#0x00\n        mov r0,@spx\n        ret\n",
+         "anl 0xba,#0x3f", 0),
     ]
     failed = 0
     for name, src, needle, expect in cases:
@@ -572,6 +725,7 @@ def main(argv=None) -> int:
     ap.add_argument("--no-r3", action="store_true", help="关闭 mov 合并")
     ap.add_argument("--no-r4", action="store_true", help="关闭常量转发")
     ap.add_argument("--no-r5", action="store_true", help="关闭无用代码/跳转回收")
+    ap.add_argument("--no-r6", action="store_true", help="关闭 C 风格固定地址 RMW 融合")
     args = ap.parse_args(argv)
 
     if args.self_test:
@@ -597,6 +751,8 @@ def main(argv=None) -> int:
         rules.append("r4")
     if not args.no_r5:
         rules.append("r5")
+    if not args.no_r6:
+        rules.append("r6")
 
     new_text, stats = optimize(text, tuple(rules))
     out_path = Path(args.out) if args.out else path
@@ -608,7 +764,8 @@ def main(argv=None) -> int:
             f"(省 {stats['in_before'] - stats['in_after']})；"
             f"R1 spx 合并 {stats['r1']} 组(省 {stats['spx_saved']})，"
             f"R2 冗余 mov {stats['r2']}，R3 mov 合并 {stats['r3']}，"
-            f"R4 常量转发 {stats['r4']}，R5 无用代码 {stats['r5']}"
+            f"R4 常量转发 {stats['r4']}，R5 无用代码 {stats['r5']}，"
+            f"R6 RMW 融合 {stats['r6']}(省 {stats['r6_saved']})"
         )
     else:
         print(f"已优化 {path.name}: 指令 {stats['in_before']} -> {stats['in_after']}")

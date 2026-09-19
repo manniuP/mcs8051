@@ -2,7 +2,7 @@
 
 > 目标：STC 只给了 Keil C251 的 `.LIB`（USB 等），要让它在本仓库的 **SDCC mcs251** 工具链里能用。
 > 以「Ai8051U-32Bit/43 USB-CDC」为例走通了整条路，并踩平两个 **SDCC 专属坑**。
-> 工程见 [`../examples/ai8051u_usb_cdc/`](../examples/ai8051u_usb_cdc/README.md)。
+> 工程见 [`../examples/ai8051u/usb_cdc/`](../examples/ai8051u/usb_cdc/README.md)。
 
 ## 1. 总体步骤
 
@@ -75,9 +75,9 @@ RxRptr, RxWptr, TxRptr, TxWptr, RxBuffer, TxBuffer, (uart.c) UartBusy
 
 ## 7. 已按此移植并真机验证的库
 
-- **USB-CDC**：[`../examples/ai8051u_usb_cdc/`](../examples/ai8051u_usb_cdc/README.md)，
+- **USB-CDC**：[`../examples/ai8051u/usb_cdc/`](../examples/ai8051u/usb_cdc/README.md)，
   P4.2↔P4.3 跳线回环通过。
-- **USB-HID**：[`../examples/ai8051u_usb_hid/`](../examples/ai8051u_usb_hid/README.md)，
+- **USB-HID**：[`../examples/ai8051u/usb_hid/`](../examples/ai8051u/usb_hid/README.md)，
   本板无按键 → 改为**持续上报**，主机 `hidread.ps1` 读到递变的 64 字节报告。
 
 其他只有 Keil `.LIB`、无源码的（MDU32/TFPU/FPMU）不能用此法；DSP32 有 `.ASM` 源可另行翻译。

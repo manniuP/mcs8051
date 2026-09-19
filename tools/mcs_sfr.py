@@ -129,10 +129,82 @@ def emit_c(parsed: dict) -> str:
     return "\n".join(out) + "\n"
 
 
+# 生成的 Zig 模块里 `Reg` 寄存器对象的样板（方案 B；与目标架构无关，位语法按 arch 选）。
+ZIG_REG_PRELUDE = '''\
+const builtin = @import("builtin");
+const is_mcs51 = builtin.cpu.arch == .mcs51;
+
+fn _hex2(comptime v: u8) [2]u8 {
+    const d = "0123456789abcdef";
+    return .{ d[v >> 4], d[v & 0x0f] };
+}
+
+fn _dec1(comptime v: u3) [1]u8 {
+    return .{@as(u8, '0') + v};
+}
+
+/// 寄存器对象：按名调用字节/位 SFR 指令（地址为 comptime 常量）。
+/// `and`/`or` 是 Zig 关键字，故位与/位或方法名用 `anl`/`orl`。
+/// 用法：dev.reg.P1M1.anl(~0x02) / dev.reg.P1.clr(1) / dev.reg.P1.write(0xfd)。
+pub const Reg = struct {
+    addr: u16,
+
+    pub inline fn write(self: Reg, comptime val: u8) void {
+        asm volatile ("mov 0x" ++ _hex2(@truncate(self.addr)) ++ ",#0x" ++ _hex2(val));
+    }
+
+    pub inline fn anl(self: Reg, comptime m: u8) void {
+        asm volatile ("anl 0x" ++ _hex2(@truncate(self.addr)) ++ ",#0x" ++ _hex2(m));
+    }
+
+    pub inline fn orl(self: Reg, comptime m: u8) void {
+        asm volatile ("orl 0x" ++ _hex2(@truncate(self.addr)) ++ ",#0x" ++ _hex2(m));
+    }
+
+    pub inline fn read(self: Reg) u8 {
+        const addr: u8 = @intCast(self.addr);
+        return @as(*volatile u8, @ptrFromInt(addr)).*;
+    }
+
+    pub inline fn set(self: Reg, comptime b: u3) void {
+        asm volatile ("setb 0x" ++ _hex2(@truncate(self.addr)) ++ (if (is_mcs51) "^" else ".") ++ _dec1(b));
+    }
+
+    pub inline fn clr(self: Reg, comptime b: u3) void {
+        asm volatile ("clr 0x" ++ _hex2(@truncate(self.addr)) ++ (if (is_mcs51) "^" else ".") ++ _dec1(b));
+    }
+
+    pub inline fn cpl(self: Reg, comptime b: u3) void {
+        asm volatile ("cpl 0x" ++ _hex2(@truncate(self.addr)) ++ (if (is_mcs51) "^" else ".") ++ _dec1(b));
+    }
+};
+'''
+
+
 def emit_zig(parsed: dict) -> str:
-    out = ["// 由 tools/mcs_sfr.py 生成：SFR/XFR 地址（comptime 常量）", "", "pub const sfr = struct {"]
+    out = [
+        "// 由 tools/mcs_sfr.py 生成：SFR/XFR 地址（comptime 常量）+ 寄存器对象（方案 B）。",
+        "// 地址：dev.sfr.P1M1；寄存器对象：dev.reg.P1M1.anl(~0x02) / dev.reg.P1.clr(1)。",
+        "",
+        ZIG_REG_PRELUDE,
+        "",
+        "pub const sfr = struct {",
+    ]
     for n, a in sorted(parsed["sfr"].items(), key=lambda kv: kv[1]):
         out.append(f"    pub const {n}: u16 = {a:#04x};")
+    out.append("};")
+    out.append("")
+    out.append("/// 寄存器对象命名空间（方案 B）；成员与 `sfr` 同名，按名用即可。")
+    out.append("pub const reg = struct {")
+    for n, a in sorted(parsed["sfr"].items(), key=lambda kv: kv[1]):
+        out.append(f"    pub const {n} = Reg{{ .addr = {a:#04x} }};")
+    out.append("};")
+    out.append("")
+    out.append("/// 固定地址指针（C 风格）：`dev.p.P_SW1.* &= ~0xc0;`。")
+    out.append("/// 配 `tools/mcs_opt.py` 的 R6，可把读-改-写融为单条 `anl/orl/xrl dir8,#imm`。")
+    out.append("pub const p = struct {")
+    for n, a in sorted(parsed["sfr"].items(), key=lambda kv: kv[1]):
+        out.append(f"    pub const {n} = @as(*volatile u8, @ptrFromInt({a:#04x}));")
     out.append("};")
     out.append("")
     out.append("pub const xfr = struct {")

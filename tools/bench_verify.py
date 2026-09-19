@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bench_verify.py —— 真机读 `zigbench`（examples/ai8051u_zig_bench）周期输出并核对。
+"""bench_verify.py —— 真机读 `zigbench`（examples/ai8051u/zig_bench）周期输出并核对。
 
 zigbench 的 UART1（P3.1）@9600 持续输出：
     bench
@@ -9,7 +9,7 @@ zigbench 的 UART1（P3.1）@9600 持续输出：
 本脚本从串口抓一帧，解析 16 位十六进制周期数，做基本断言：
     - 四个读延迟、两个执行周期都应为非零（为 0/缺行多为测量回绕或没烧对固件）；
     - 打印相对趋势（data 直址应最快，idata/edata/xdata 依次或不低于 data）。
-真机验证步骤见 examples/ai8051u_zig_bench/README.md。
+真机验证步骤见 examples/ai8051u/zig_bench/README.md。
 
 用法：
   python tools/bench_verify.py                 # 默认 COM8 @9600

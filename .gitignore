@@ -31,7 +31,7 @@
 /tools/vendor/
 
 # 旧构建脚本（已被 xmake.lua 取代）；示例内的遗留脚本
-/examples/ai8051u_blink/build.ps1
+/examples/ai8051u/blink/build.ps1
 
 # 构建产物（sdcc/sdas/sdld 输出）
 *.ihx
@@ -43,67 +43,28 @@
 *.lst
 *.dumpcustom*
 *.map
+*.cdb
 
-# Zig 后端生成的汇编（.zig 是源，.asm 是产物）
-# 差分回归中间产物（MCS_KEEP_BASE=1 时 mcs_ir 之前的 asm，见 tools/mcs_regress.py）
+# 构建产物（.asm/.rel/.ihx/.cdb 等）集中在 build/examples/（见 /build/ 规则）
+# 源码目录里只留源文件；.asm 源仅 crt0*.asm 与手工参考（ptrtest_correct/test_dr28）
+# 差分回归中间产物（MCS_KEEP_BASE=1，见 tools/mcs_regress.py）
 *.asm.base
-/examples/ai8051u_blink/*.asm
-/examples/ai8051u_ptrtest/*.asm
-/examples/at89c52_sim/*.asm
-/examples/ai8051u_led/*.asm
-/examples/ai8051u_uart/*.asm
-/examples/ai8051u_zig_led/*.asm
-!/examples/ai8051u_zig_led/crt0.asm
-/examples/ai8051u_zig_asm/*.asm
-!/examples/ai8051u_zig_asm/crt0.asm
-/examples/ai8051u_zig_irq/*.asm
-!/examples/ai8051u_zig_irq/crt0.asm
-/examples/ai8051u_zig_irq_all/*.asm
-!/examples/ai8051u_zig_irq_all/crt0.asm
-/examples/ai8051u_zig_mem/*.asm
-!/examples/ai8051u_zig_mem/crt0.asm
-/examples/ai8051u_zig_hotcold/*.asm
-!/examples/ai8051u_zig_hotcold/crt0.asm
-/examples/ai8051u_zig_opt/*.asm
-!/examples/ai8051u_zig_opt/crt0.asm
-/examples/ai8051u_zig_bench/*.asm
-!/examples/ai8051u_zig_bench/crt0.asm
-/examples/ai8051u_zig_buzz/*.asm
-!/examples/ai8051u_zig_buzz/crt0.asm
-/examples/ai8051u_zig_log/*.asm
-!/examples/ai8051u_zig_log/crt0.asm
-/examples/ai8051u_zig_rtindex/*.asm
-!/examples/ai8051u_zig_rtindex/crt0.asm
-/examples/ai8051u_zig_slice/*.asm
-!/examples/ai8051u_zig_slice/crt0.asm
-/examples/ai8051u_zig_rtslice/*.asm
-!/examples/ai8051u_zig_rtslice/crt0.asm
-/examples/ai8051u_zig_ns/*.asm
-!/examples/ai8051u_zig_ns/crt0.asm
-/examples/ai8051u_zig_t0print/*.asm
-!/examples/ai8051u_zig_t0print/crt0.asm
-!/examples/ai8051u_zig_t0print/crt0_mcs51.asm
-/examples/ai8051u_zig_uart_echo/*.asm
-!/examples/ai8051u_zig_uart_echo/crt0.asm
-!/examples/ai8051u_zig_uart_echo/crt0_mcs51.asm
 # 例外：手工编写的参考 asm（非构建产物）
-!/examples/ai8051u_ptrtest/ptrtest_correct.asm
-!/examples/ai8051u_ptrtest/test_dr28.asm
 
 # ptrtest 调试/构建产物（仅 ptrtest.zig 与 main.c 是源）
-/examples/ai8051u_ptrtest/*.txt
-/examples/ai8051u_ptrtest/*.log
-/examples/ai8051u_ptrtest/*.ihex
-/examples/ai8051u_ptrtest/ptrtest
-/examples/ai8051u_ptrtest/noptr
-/examples/ai8051u_ptrtest/noptr.zig
-/examples/ai8051u_ptrtest/simple
-/examples/ai8051u_ptrtest/simple.zig
-/examples/ai8051u_ptrtest/simplest
-/examples/ai8051u_ptrtest/simplest.zig
-/examples/ai8051u_ptrtest/empty.zig
-/examples/ai8051u_ptrtest/min.ihex
-/examples/ai8051u_ptrtest/min.zig
+/examples/ai8051u/ptrtest/*.txt
+/examples/ai8051u/ptrtest/*.log
+/examples/ai8051u/ptrtest/*.ihex
+/examples/ai8051u/ptrtest/ptrtest
+/examples/ai8051u/ptrtest/noptr
+/examples/ai8051u/ptrtest/noptr.zig
+/examples/ai8051u/ptrtest/simple
+/examples/ai8051u/ptrtest/simple.zig
+/examples/ai8051u/ptrtest/simplest
+/examples/ai8051u/ptrtest/simplest.zig
+/examples/ai8051u/ptrtest/empty.zig
+/examples/ai8051u/ptrtest/min.ihex
+/examples/ai8051u/ptrtest/min.zig
 
 # cobs 主机测试产物
 /lib/cobs/*.exe
@@ -111,15 +72,9 @@
 /lib/cordic/*.exe
 
 # 由源码打包的 SDCC 库（生成物）
-/examples/ai8051u_usb_cdc/*.lib
+/examples/ai8051u/usb_cdc/*.lib
 
 # USB 示例：SDCC 由 .c 生成的汇编（.c 是源）
-/examples/ai8051u_usb_cdc/src/*.asm
-/examples/ai8051u_usb_hid/src/*.asm
-/examples/ai8051u_usb_cdc_cobs/*.asm
-/examples/mcs51_c_cobs/*.asm
-/examples/ai8051u_mdu/*.asm
-/examples/ai8051u_cmd/*.asm
 __pycache__/
 
 # Zig / xmake 构建缓存

@@ -17,7 +17,7 @@
 | `cobs_zig_test.zig` | 主机往返测试（Zig）：`zig run lib/cobs/cobs_zig_test.zig` |
 | `cobs_c_test.c` | 主机往返测试（C）：`zig cc lib/cobs/cobs_c_test.c lib/cobs/cobs.c -o t.exe; .\t.exe` |
 
-用法示例见 `examples/ai8051u_zig_log/`（Zig）与 `examples/ai8051u_c_cobs/`（C）。
+用法示例见 `examples/ai8051u/zig_log/`（Zig）与 `examples/ai8051u/c_cobs/`（C）。
 
 ## COBS 简述
 
@@ -49,7 +49,7 @@
 | `logStr` / `logBytes` | `LEB128(len)` + 原始字节 |
 
 `XOR 校验` = `id_lo ^ id_hi ^ 所有参数字节`（**不含起始 `0x7E`**）。
-主机端参考解码器：`examples/ai8051u_zig_log/decode.ps1`（先按 `0x00` 切帧 → COBS 解码 → 按 id 表解析）。
+主机端参考解码器：`examples/ai8051u/zig_log/decode.ps1`（先按 `0x00` 切帧 → COBS 解码 → 按 id 表解析）。
 
 ## Zig 接口
 

@@ -11,8 +11,8 @@
 | 路径 | 来源 | 性质 |
 | --- | --- | --- |
 | `lib/stc-hal/` | STC 官方 AI8051U 外设库（AiCube / 官网 SDK） | 原样保留，文件头含 `Web: www.STCAI.com` |
-| `examples/ai8051u_usb_cdc/src/` | STC 官方 `AI8051U-DEMO-CODE-V1.2` 的 USB-CDC 例程（Keil C251） | 由 `tools/keil2sdcc_c.py` 翻译为本工具链可编译的 SDCC C，属衍生作品 |
-| `examples/ai8051u_usb_hid/src/` | 同上，HID 例程 | 同上 |
+| `examples/ai8051u/usb_cdc/` | STC 官方 `AI8051U-DEMO-CODE-V1.2` 的 USB-CDC 例程（Keil C251） | 由 `tools/keil2sdcc_c.py` 翻译为本工具链可编译的 SDCC C，属衍生作品 |
+| `examples/ai8051u/usb_hid/` | 同上，HID 例程 | 同上 |
 | `lib/include/ai8051u_sfr.h` | STC 官方 Keil 头 `AI8051U.keil.h` | 由 `tools/keil2sdcc.py` 自动生成 |
 | `docs/21-指令周期参考与bench验证.md`、`tools/mcs_cycles.py` | STC 官方 `AI8051U` 手册 附录A.1.3 指令表 | 指令周期**数据**的摘录/整理（事实性数据，注明出处） |
 
