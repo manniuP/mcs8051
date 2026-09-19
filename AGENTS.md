@@ -18,7 +18,7 @@
 > + `@tag` IR 提示 + `zigopt`/`zigbench` 示例；THIRD-PARTY 合规、SSH(443)、Release v0.1.0**、关键坑、复现。
 > 上一份交接：[`docs/交接-2026-09-17-开源发布与CI.md`](docs/交接-2026-09-17-开源发布与CI.md)
 > （三仓开源 + 便携工具链 CI，注意英文 Windows cp1252 坑）。
-> **工作清单 / 下一步**见 [`docs/待推进-2026-09-18.md`](docs/待推进-2026-09-18.md)
+> **工作清单 / 下一步**见 [`docs/待推进-2026-09-19.md`](docs/待推进-2026-09-19.md)
 > （等级细化、调试支持、外部存储、设备表/便携余项、旧优化脚本复查…）。
 > 发布同步：`docs/发布同步策略.md`。更早：`docs/交接-2026-09-16-便携工具链与中断.md` 等。
 
@@ -33,12 +33,14 @@
 - **已开源（2026-09-17）**：`manniuP/zig-mcs51-backend`（Zig MCS 后端，MIT）、
   `manniuP/sdcc-c251`（SDCC fork，**未改源码**）、`manniuP/mcs8051`（顶层集成仓：
   项目内容 + 两编译器子模块 + 便携工具链 CI，Apache-2.0）。详见最近交接。
-- **GitHub SSH 已配置**：`~/.ssh/id_ed25519_github`（ed25519，无口令）；两仓的 `backend`
-  远程用 `git@github.com:...`。**路径脱敏**：`mcs8051` 历史已重写（`<workspace>`→`<workspace>`，
-  身份保留）并强推 `main=5f38408`；`mcs251` 本地历史仍含旧路径（未 push）。旧优化脚本见
-  工作区 `old-scripts/`（新旧版 + 已知问题标注）。
-- 工作区：`<workspace>\`（本身非 git），含 `mcs251\`（**主项目**，编译器在 `compiler/` 子模块 →
-  `zig-mcs51-backend`）、`zig\`（fork 的旧 clone，现冗余，可作上游镜像）、`sdcc-c251\`（SDCC fork）、
+- **单仓（2026-09-19）**：`mcs251` 与 `mcs8051` **合并为同一历史**——`mcs251` = 本地工作树、
+  `origin = manniuP/mcs8051`（公开，`main`），**内容以公开仓为准**；发布 = `git push origin main`，
+  流程见 `docs/发布同步策略.md`。
+- **GitHub SSH 已配置**：`~/.ssh/id_ed25519_github`（ed25519，无口令）；远程用 `git@github.com:...`。
+  旧优化脚本见工作区 `old-scripts/`（新旧版 + 已知问题标注）。
+- 工作区：`<workspace>\`（本身非 git），含 `mcs251\`（**主项目** = `manniuP/mcs8051`，
+  `origin` 即公开仓、分支 `main`；编译器在 `compiler/` 子模块 → `zig-mcs51-backend`）、
+  `zig\`（fork 的旧 clone，现冗余，可作上游镜像）、`sdcc-c251\`（SDCC 源码镜像）、
   `docs\`（工作区文档）。主项目文档在 `mcs251\docs\README.md`；**跟上游方案/协定见
   `docs/26-上游跟进方案.md`、`docs/27-上游迁移协定.md`**（改编译器前先看 27）。
 - **可自举（已解决）**：用**系统 zig**（0.16.0，`zig` 已在 PATH）从源码重建编译器，

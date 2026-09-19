@@ -22,10 +22,9 @@
 ```
 <workspace>\                 （本身不是 git 仓库；只有子目录是）
   docs\                        工作区级文档（本文件在这里）
-  mcs251\                      主项目（git，分支 master）；compiler/ 是子模块 → zig-mcs51-backend
+  mcs251\                      主项目（git，分支 main，origin=manniuP/mcs8051）；compiler/ 子模块 → zig-mcs51-backend
   zig\                         fork 的旧 clone（分支 mcs251-backend），现冗余/可作上游镜像
-  sdcc-c251\                   SDCC MCS-251 fork（git；origin=gevico/sdcc-c251，
-                               upstream=sourceforge sdcc git-mirror）
+  sdcc-c251\                   SDCC MCS-251 源码镜像（git；origin=gevico/sdcc-c251）
 ```
 
 - **主项目 = `mcs251`**，文档入口 `mcs251\docs\README.md`；**编译器源码在 `mcs251\compiler`（子模块）**。
